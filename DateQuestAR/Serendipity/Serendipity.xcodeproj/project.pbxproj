@@ -1,0 +1,730 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		BA66D3862F5108810085134C /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = BA66D3852F5108810085134C /* GoogleSignIn */; };
+		BA8CC3112F4D0333003F339C /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = BA8CC3012F4D0333003F339C /* FirebaseCore */; };
+		BA8CC3122F4D0333003F339C /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = BA8CC3022F4D0333003F339C /* FirebaseAuth */; };
+		BA8CC3132F4D0333003F339C /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = BA8CC3032F4D0333003F339C /* FirebaseFirestore */; };
+		BA8CC3142F4D0333003F339C /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = BA8CC3042F4D0333003F339C /* FirebaseStorage */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		BA8CC1132F4D0335003F339C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BA8CC0FD2F4D0333003F339C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BA8CC1042F4D0333003F339C;
+			remoteInfo = Serendipity;
+		};
+		BA8CC11D2F4D0335003F339C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = BA8CC0FD2F4D0333003F339C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = BA8CC1042F4D0333003F339C;
+			remoteInfo = Serendipity;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		BA8CC1052F4D0333003F339C /* Serendipity.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Serendipity.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BA8CC1122F4D0335003F339C /* SerendipityTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SerendipityTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		BA8CC11C2F4D0335003F339C /* SerendipityUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SerendipityUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		BAE139572F50EB600099EF36 /* Exceptions for "Serendipity" folder in "Serendipity" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = BA8CC1042F4D0333003F339C /* Serendipity */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		BA8CC1072F4D0333003F339C /* Serendipity */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				BAE139572F50EB600099EF36 /* Exceptions for "Serendipity" folder in "Serendipity" target */,
+			);
+			path = Serendipity;
+			sourceTree = "<group>";
+		};
+		BA8CC1152F4D0335003F339C /* SerendipityTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SerendipityTests;
+			sourceTree = "<group>";
+		};
+		BA8CC11F2F4D0335003F339C /* SerendipityUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SerendipityUITests;
+			sourceTree = "<group>";
+		};
+		BA8CC2002F4D0333003F339C /* App */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = App;
+			sourceTree = "<group>";
+		};
+		BA8CC2012F4D0333003F339C /* Models */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Models;
+			sourceTree = "<group>";
+		};
+		BA8CC2022F4D0333003F339C /* ViewModels */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ViewModels;
+			sourceTree = "<group>";
+		};
+		BA8CC2032F4D0333003F339C /* Managers */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Managers;
+			sourceTree = "<group>";
+		};
+		BA8CC2042F4D0333003F339C /* Services */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Services;
+			sourceTree = "<group>";
+		};
+		BA8CC2052F4D0333003F339C /* Views */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Views;
+			sourceTree = "<group>";
+		};
+		BA8CC2062F4D0333003F339C /* Utilities */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Utilities;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		BA8CC1022F4D0333003F339C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BA66D3862F5108810085134C /* GoogleSignIn in Frameworks */,
+				BA8CC3112F4D0333003F339C /* FirebaseCore in Frameworks */,
+				BA8CC3122F4D0333003F339C /* FirebaseAuth in Frameworks */,
+				BA8CC3132F4D0333003F339C /* FirebaseFirestore in Frameworks */,
+				BA8CC3142F4D0333003F339C /* FirebaseStorage in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BA8CC10F2F4D0335003F339C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BA8CC1192F4D0335003F339C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		BA66D3822F50FE230085134C /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		BA8CC0FC2F4D0333003F339C = {
+			isa = PBXGroup;
+			children = (
+				BA8CC1072F4D0333003F339C /* Serendipity */,
+				BA8CC2002F4D0333003F339C /* App */,
+				BA8CC2012F4D0333003F339C /* Models */,
+				BA8CC2022F4D0333003F339C /* ViewModels */,
+				BA8CC2032F4D0333003F339C /* Managers */,
+				BA8CC2042F4D0333003F339C /* Services */,
+				BA8CC2052F4D0333003F339C /* Views */,
+				BA8CC2062F4D0333003F339C /* Utilities */,
+				BA8CC1152F4D0335003F339C /* SerendipityTests */,
+				BA8CC11F2F4D0335003F339C /* SerendipityUITests */,
+				BA66D3822F50FE230085134C /* Frameworks */,
+				BA8CC1062F4D0333003F339C /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		BA8CC1062F4D0333003F339C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				BA8CC1052F4D0333003F339C /* Serendipity.app */,
+				BA8CC1122F4D0335003F339C /* SerendipityTests.xctest */,
+				BA8CC11C2F4D0335003F339C /* SerendipityUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		BA8CC1042F4D0333003F339C /* Serendipity */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BA8CC1262F4D0335003F339C /* Build configuration list for PBXNativeTarget "Serendipity" */;
+			buildPhases = (
+				BA8CC1012F4D0333003F339C /* Sources */,
+				BA8CC1022F4D0333003F339C /* Frameworks */,
+				BA8CC1032F4D0333003F339C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				BA8CC1072F4D0333003F339C /* Serendipity */,
+				BA8CC2002F4D0333003F339C /* App */,
+				BA8CC2012F4D0333003F339C /* Models */,
+				BA8CC2022F4D0333003F339C /* ViewModels */,
+				BA8CC2032F4D0333003F339C /* Managers */,
+				BA8CC2042F4D0333003F339C /* Services */,
+				BA8CC2052F4D0333003F339C /* Views */,
+				BA8CC2062F4D0333003F339C /* Utilities */,
+			);
+			name = Serendipity;
+			packageProductDependencies = (
+				BA8CC3012F4D0333003F339C /* FirebaseCore */,
+				BA8CC3022F4D0333003F339C /* FirebaseAuth */,
+				BA8CC3032F4D0333003F339C /* FirebaseFirestore */,
+				BA8CC3042F4D0333003F339C /* FirebaseStorage */,
+				BA66D3852F5108810085134C /* GoogleSignIn */,
+			);
+			productName = Serendipity;
+			productReference = BA8CC1052F4D0333003F339C /* Serendipity.app */;
+			productType = "com.apple.product-type.application";
+		};
+		BA8CC1112F4D0335003F339C /* SerendipityTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BA8CC1292F4D0335003F339C /* Build configuration list for PBXNativeTarget "SerendipityTests" */;
+			buildPhases = (
+				BA8CC10E2F4D0335003F339C /* Sources */,
+				BA8CC10F2F4D0335003F339C /* Frameworks */,
+				BA8CC1102F4D0335003F339C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				BA8CC1142F4D0335003F339C /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				BA8CC1152F4D0335003F339C /* SerendipityTests */,
+			);
+			name = SerendipityTests;
+			packageProductDependencies = (
+			);
+			productName = SerendipityTests;
+			productReference = BA8CC1122F4D0335003F339C /* SerendipityTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		BA8CC11B2F4D0335003F339C /* SerendipityUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BA8CC12C2F4D0335003F339C /* Build configuration list for PBXNativeTarget "SerendipityUITests" */;
+			buildPhases = (
+				BA8CC1182F4D0335003F339C /* Sources */,
+				BA8CC1192F4D0335003F339C /* Frameworks */,
+				BA8CC11A2F4D0335003F339C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				BA8CC11E2F4D0335003F339C /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				BA8CC11F2F4D0335003F339C /* SerendipityUITests */,
+			);
+			name = SerendipityUITests;
+			packageProductDependencies = (
+			);
+			productName = SerendipityUITests;
+			productReference = BA8CC11C2F4D0335003F339C /* SerendipityUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		BA8CC0FD2F4D0333003F339C /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2620;
+				LastUpgradeCheck = 2620;
+				TargetAttributes = {
+					BA8CC1042F4D0333003F339C = {
+						CreatedOnToolsVersion = 26.2;
+					};
+					BA8CC1112F4D0335003F339C = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = BA8CC1042F4D0333003F339C;
+					};
+					BA8CC11B2F4D0335003F339C = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = BA8CC1042F4D0333003F339C;
+					};
+				};
+			};
+			buildConfigurationList = BA8CC1002F4D0333003F339C /* Build configuration list for PBXProject "Serendipity" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = BA8CC0FC2F4D0333003F339C;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				BA8CC3002F4D0333003F339C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				BAE139552F50EB160099EF36 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = BA8CC1062F4D0333003F339C /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				BA8CC1042F4D0333003F339C /* Serendipity */,
+				BA8CC1112F4D0335003F339C /* SerendipityTests */,
+				BA8CC11B2F4D0335003F339C /* SerendipityUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		BA8CC1032F4D0333003F339C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BA8CC1102F4D0335003F339C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BA8CC11A2F4D0335003F339C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		BA8CC1012F4D0333003F339C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BA8CC10E2F4D0335003F339C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BA8CC1182F4D0335003F339C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		BA8CC1142F4D0335003F339C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BA8CC1042F4D0333003F339C /* Serendipity */;
+			targetProxy = BA8CC1132F4D0335003F339C /* PBXContainerItemProxy */;
+		};
+		BA8CC11E2F4D0335003F339C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = BA8CC1042F4D0333003F339C /* Serendipity */;
+			targetProxy = BA8CC11D2F4D0335003F339C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		BA8CC1242F4D0335003F339C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		BA8CC1252F4D0335003F339C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		BA8CC1272F4D0335003F339C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Serendipity/Info.plist;
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Serendipity uses Bluetooth to detect nearby matches.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Serendipity uses the camera for the AR radar experience.";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Serendipity uses your location to find nearby matches during quest mode.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Serendipity needs your location to show nearby matches on the radar.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIBackgroundModes = "location bluetooth-central";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = "-ObjC";
+				PRODUCT_BUNDLE_IDENTIFIER = henry.Serendipity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		BA8CC1282F4D0335003F339C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Serendipity/Info.plist;
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Serendipity uses Bluetooth to detect nearby matches.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "Serendipity uses the camera for the AR radar experience.";
+				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Serendipity uses your location to find nearby matches during quest mode.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Serendipity needs your location to show nearby matches on the radar.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UIBackgroundModes = "location bluetooth-central";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				OTHER_LDFLAGS = "-ObjC";
+				PRODUCT_BUNDLE_IDENTIFIER = henry.Serendipity;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		BA8CC12A2F4D0335003F339C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = henry.SerendipityTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Serendipity.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Serendipity";
+			};
+			name = Debug;
+		};
+		BA8CC12B2F4D0335003F339C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = henry.SerendipityTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Serendipity.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Serendipity";
+			};
+			name = Release;
+		};
+		BA8CC12D2F4D0335003F339C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = henry.SerendipityUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Serendipity;
+			};
+			name = Debug;
+		};
+		BA8CC12E2F4D0335003F339C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = henry.SerendipityUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Serendipity;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		BA8CC1002F4D0333003F339C /* Build configuration list for PBXProject "Serendipity" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BA8CC1242F4D0335003F339C /* Debug */,
+				BA8CC1252F4D0335003F339C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BA8CC1262F4D0335003F339C /* Build configuration list for PBXNativeTarget "Serendipity" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BA8CC1272F4D0335003F339C /* Debug */,
+				BA8CC1282F4D0335003F339C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BA8CC1292F4D0335003F339C /* Build configuration list for PBXNativeTarget "SerendipityTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BA8CC12A2F4D0335003F339C /* Debug */,
+				BA8CC12B2F4D0335003F339C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BA8CC12C2F4D0335003F339C /* Build configuration list for PBXNativeTarget "SerendipityUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BA8CC12D2F4D0335003F339C /* Debug */,
+				BA8CC12E2F4D0335003F339C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		BA8CC3002F4D0333003F339C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/firebase/firebase-ios-sdk.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 11.0.0;
+			};
+		};
+		BAE139552F50EB160099EF36 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 9.1.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		BA66D3852F5108810085134C /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BAE139552F50EB160099EF36 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		BA8CC3012F4D0333003F339C /* FirebaseCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BA8CC3002F4D0333003F339C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseCore;
+		};
+		BA8CC3022F4D0333003F339C /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BA8CC3002F4D0333003F339C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		BA8CC3032F4D0333003F339C /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BA8CC3002F4D0333003F339C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
+		};
+		BA8CC3042F4D0333003F339C /* FirebaseStorage */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BA8CC3002F4D0333003F339C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseStorage;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = BA8CC0FD2F4D0333003F339C /* Project object */;
+}
