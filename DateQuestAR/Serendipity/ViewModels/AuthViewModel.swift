@@ -58,14 +58,19 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
-    private func loadUserProfile(uid: String) async {
+    private func loadUserProfile(uid: String, retryCount: Int = 0) async {
         do {
             let profile = try await FirestoreService.shared.fetchUser(uid: uid)
             self.currentUser = profile
             self.appState = profile != nil ? .authenticated : .onboarding
         } catch {
-            self.errorMessage = error.localizedDescription
-            self.appState = .unauthenticated
+            if retryCount < 2 {
+                try? await Task.sleep(nanoseconds: UInt64((retryCount + 1)) * 1_000_000_000)
+                await loadUserProfile(uid: uid, retryCount: retryCount + 1)
+            } else {
+                self.errorMessage = "Unable to load your profile. Please check your connection and try again."
+                self.appState = .unauthenticated
+            }
         }
     }
 

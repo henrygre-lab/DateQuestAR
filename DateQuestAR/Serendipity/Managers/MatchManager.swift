@@ -82,7 +82,9 @@ final class MatchManager: ObservableObject {
                                         _ b: [MatchPreferences.RelationshipType]) -> Double {
         let setA = Set(a)
         let setB = Set(b)
-        return setA.isDisjoint(with: setB) ? 0.0 : 1.0
+        let intersection = setA.intersection(setB).count
+        let union = setA.union(setB).count
+        return union == 0 ? 0 : Double(intersection) / Double(union)  // Jaccard index
     }
 
     private func scoreAgeCompatibility(_ myAge: Int, ageRange: ClosedRange<Int>,

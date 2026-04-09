@@ -260,15 +260,16 @@ struct SettingsView: View {
                 icon: "exclamationmark.bubble.fill",
                 iconColor: DQ.Colors.error,
                 title: "Report a User",
-                destination: ReportUserView()
+                destination: ReportUserView(reportedUID: matchManager.nearbyMatchProfile?.uid ?? "")
             )
             Divider().opacity(0.1)
             settingsNavRow(
                 icon: "hand.raised.slash.fill",
                 iconColor: DQ.Colors.warning,
                 title: "Block List",
-                destination: Text("Block List — TODO")
-                    .foregroundStyle(DQ.Colors.textPrimary)
+                destination: Text("Coming soon")
+                    .font(DQ.Typography.body())
+                    .foregroundStyle(DQ.Colors.textSecondary)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .dqBackground()
             )
@@ -376,7 +377,8 @@ struct AddPauseZoneView: View {
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Add") {
-                        let zone = GeoFenceZone(label: label, geohash: "stub_geohash",
+                        let zone = GeoFenceZone(label: label,
+                                                geohash: LocationService.shared.currentGeohash ?? "",
                                                 radiusMeters: radius, isActive: true)
                         onAdd(zone)
                         dismiss()
@@ -393,6 +395,8 @@ struct AddPauseZoneView: View {
 // MARK: - Report User View
 
 struct ReportUserView: View {
+    var reportedUID: String
+
     @StateObject private var verifier = SafetyVerifier()
     @State private var selectedReason: SafetyVerifier.ReportReason = .fakeProfile
     @State private var details = ""
@@ -447,7 +451,7 @@ struct ReportUserView: View {
                 } else {
                     Button("Submit Report") {
                         Task {
-                            await verifier.reportUser(reportedUID: "stub_uid",
+                            await verifier.reportUser(reportedUID: reportedUID,
                                                       reason: selectedReason, details: details)
                             submitted = true
                         }
@@ -465,6 +469,8 @@ struct ReportUserView: View {
 // MARK: - Data Rights View
 
 struct DataRightsView: View {
+    @State private var showComingSoon = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: DQ.Spacing.xxl) {
@@ -474,13 +480,18 @@ struct DataRightsView: View {
                 Text("Under CCPA and GDPR, you have the right to access, correct, and delete your personal data.")
                     .font(DQ.Typography.body())
                     .foregroundStyle(DQ.Colors.textSecondary)
-                Button("Request My Data Export") { /* TODO: Call backend export API */ }
+                Button("Request My Data Export") { showComingSoon = true }
                     .buttonStyle(.dqSecondary)
-                Button("Delete All My Data") { /* TODO */ }
+                Button("Delete All My Data") { showComingSoon = true }
                     .buttonStyle(.dqSecondary)
             }
             .padding(DQ.Spacing.xl)
         }
         .dqBackground()
+        .alert("Coming Soon", isPresented: $showComingSoon) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("This feature is not yet available.")
+        }
     }
 }

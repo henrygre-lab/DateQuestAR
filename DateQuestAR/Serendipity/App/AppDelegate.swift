@@ -71,7 +71,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
     func application(_ app: UIApplication,
                      open url: URL,
-                     options: [UIApplication.OpenURLOptionsKey: Any] = [:]) async -> Bool {
+                     options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
         return GIDSignIn.sharedInstance.handle(url)
     }
     

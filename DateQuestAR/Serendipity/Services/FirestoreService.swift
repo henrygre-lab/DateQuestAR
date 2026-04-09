@@ -42,14 +42,14 @@ final class FirestoreService {
     /// Fetches active users within the geohash neighborhood.
     func fetchNearbyUsers(geohash: String, excludeUID: String) async throws -> [UserProfile] {
         // TODO: Use GeoFire or geohash range queries for efficient proximity search
-        // Stub: fetch users with questModeEnabled = true
         let snapshot = try await usersCollection
             .whereField("privacySettings.questModeEnabled", isEqualTo: true)
-            .whereField("uid", isNotEqualTo: excludeUID)
             .limit(to: 50)
             .getDocuments()
 
-        return try snapshot.documents.compactMap { try $0.data(as: UserProfile.self) }
+        return try snapshot.documents
+            .compactMap { try $0.data(as: UserProfile.self) }
+            .filter { $0.uid != excludeUID }
     }
 
     // MARK: - Matches

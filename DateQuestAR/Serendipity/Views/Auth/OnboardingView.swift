@@ -100,6 +100,50 @@ struct OnboardingView: View {
                     Task { await authViewModel.signInWithGoogle() }
                 }
             }
+
+            #if DEBUG
+            Divider().opacity(0.2).padding(.top, DQ.Spacing.md)
+            Button {
+                authViewModel.currentUser = UserProfile(
+                    uid: "dev_bypass",
+                    displayName: "Dev User",
+                    age: 25,
+                    bio: "Developer bypass account",
+                    photoURLs: [],
+                    selfDescriptors: ["developer"],
+                    verificationStatus: .verified,
+                    trustLevel: .gold,
+                    preferences: MatchPreferences(
+                        ageRange: 21...35,
+                        maxDistanceMiles: 0.25,
+                        relationshipTypes: [.longTerm],
+                        genderPreferences: [],
+                        interests: ["coding", "coffee", "hiking"],
+                        dealbreakers: [],
+                        compatibilityThreshold: 0.80
+                    ),
+                    privacySettings: PrivacySettings(
+                        questModeEnabled: true,
+                        visibilityRadius: 0.25,
+                        autoPauseZones: [],
+                        alertLimit: 10,
+                        locationSharingMode: .anonymized,
+                        showInCommunityEvents: true
+                    ),
+                    gamification: GamificationProfile(
+                        level: 1, xp: 0, badges: [],
+                        questsCompleted: 0, totalConnections: 0
+                    ),
+                    createdAt: Date(),
+                    lastActive: Date()
+                )
+                authViewModel.appState = .authenticated
+            } label: {
+                Text("Developer Bypass")
+                    .font(DQ.Typography.footnote())
+                    .foregroundStyle(DQ.Colors.warning)
+            }
+            #endif
         }
     }
 }

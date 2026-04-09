@@ -20,6 +20,7 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
     // Geofence zones loaded from user prefs
     private var autoPauseZones: [GeoFenceZone] = []
     private var isPaused = false
+    private var pendingQuestStart = false
 
     private override init() {
         super.init()
@@ -39,6 +40,7 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
 
     func startQuestScanning() {
         guard authorizationStatus == .authorizedAlways else {
+            pendingQuestStart = true
             requestPermissions()
             return
         }
@@ -87,6 +89,10 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
 
     func locationManager(_ manager: CLLocationManager, didChangeAuthorization status: CLAuthorizationStatus) {
         DispatchQueue.main.async { self.authorizationStatus = status }
+        if status == .authorizedAlways && pendingQuestStart {
+            pendingQuestStart = false
+            startQuestScanning()
+        }
     }
 
     func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
@@ -107,19 +113,8 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
     // MARK: - Proximity Broadcast
 
     private func broadcastLocationUpdate(_ location: CLLocation) {
-        // In production: compare against nearby match locations from Firebase
-        // For scaffold: post notification for MatchManager to handle
-        NotificationCenter.default.post(
-            name: .proximityUpdated,
-            object: ProximityEvent(
-                matchID: "stub_match_id",
-                partnerUID: "stub_partner_uid",
-                distanceMiles: 0.15,                        // TODO: Real distance calc
-                hapticIntensity: hapticIntensity(for: 0.15),
-                shouldRevealPhotos: false,
-                timestamp: Date()
-            )
-        )
+        // Real proximity events are posted by ProximityService when UWB/BLE detects a match.
+        // LocationService only updates currentLocation and currentGeohash.
     }
 
     // MARK: - Haptics
