@@ -49,7 +49,7 @@ final class AuthViewModel: ObservableObject {
             guard let self else { return }
             Task {
                 if let firebaseUser {
-                    await self.loadUserProfile(uid: firebaseUser.uid)
+                    await self.createOrFetchUserProfile(for: firebaseUser)
                 } else {
                     self.appState = .unauthenticated
                     self.currentUser = nil
@@ -58,20 +58,69 @@ final class AuthViewModel: ObservableObject {
         }
     }
 
-    private func loadUserProfile(uid: String, retryCount: Int = 0) async {
+    // MARK: - Profile Loading
+
+    /// Fetches an existing profile or creates a minimal one for new users.
+    private func createOrFetchUserProfile(for firebaseUser: FirebaseAuth.User, retryCount: Int = 0) async {
         do {
-            let profile = try await FirestoreService.shared.fetchUser(uid: uid)
-            self.currentUser = profile
-            self.appState = profile != nil ? .authenticated : .onboarding
+            if let existing = try await FirestoreService.shared.fetchUser(uid: firebaseUser.uid) {
+                self.currentUser = existing
+                self.appState = existing.isProfileComplete ? .authenticated : .onboarding
+            } else {
+                let newProfile = makeMinimalProfile(for: firebaseUser)
+                try await FirestoreService.shared.createOrUpdateUser(newProfile)
+                self.currentUser = newProfile
+                self.appState = .onboarding
+            }
         } catch {
             if retryCount < 2 {
                 try? await Task.sleep(nanoseconds: UInt64((retryCount + 1)) * 1_000_000_000)
-                await loadUserProfile(uid: uid, retryCount: retryCount + 1)
+                await createOrFetchUserProfile(for: firebaseUser, retryCount: retryCount + 1)
             } else {
                 self.errorMessage = "Unable to load your profile. Please check your connection and try again."
                 self.appState = .unauthenticated
             }
         }
+    }
+
+    /// Creates a minimal profile with safe defaults for new users.
+    private func makeMinimalProfile(for firebaseUser: FirebaseAuth.User) -> UserProfile {
+        UserProfile(
+            id: firebaseUser.uid,
+            uid: firebaseUser.uid,
+            displayName: firebaseUser.displayName ?? "",
+            age: 0,
+            bio: "",
+            photoURLs: [],
+            selfDescriptors: [],
+            verificationStatus: .unverified,
+            trustLevel: .bronze,
+            preferences: MatchPreferences(
+                ageRange: 18...99,
+                maxDistanceMiles: 0.25,
+                relationshipTypes: [],
+                genderPreferences: [],
+                interests: [],
+                dealbreakers: [],
+                compatibilityThreshold: 0.80
+            ),
+            privacySettings: PrivacySettings(
+                questModeEnabled: false,
+                visibilityRadius: 0.25,
+                autoPauseZones: [],
+                alertLimit: 10,
+                locationSharingMode: .anonymized,
+                showInCommunityEvents: false
+            ),
+            gamification: GamificationProfile(
+                level: 1, xp: 0, badges: [],
+                questsCompleted: 0, totalConnections: 0
+            ),
+            isProfileComplete: false,
+            trustScore: 0.5,
+            createdAt: Date(),
+            lastActive: Date()
+        )
     }
 
     // MARK: - Sign Up
@@ -85,10 +134,9 @@ final class AuthViewModel: ObservableObject {
         defer { isLoading = false }
         do {
             let result = try await Auth.auth().createUser(withEmail: email, password: password)
-            print("[Auth] New user: \(result.user.uid)")
-            appState = .onboarding
+            await createOrFetchUserProfile(for: result.user)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Account creation failed. Please try again."
         }
     }
 
@@ -192,16 +240,17 @@ final class AuthViewModel: ObservableObject {
             let result = try await GIDSignIn.sharedInstance.signIn(withPresenting: rootVC)
 
             guard let idToken = result.user.idToken?.tokenString else {
-                errorMessage = "Failed to get Google ID token."
+                errorMessage = "Authentication could not be completed. Please try again."
                 return
             }
             let credential = GoogleAuthProvider.credential(
                 withIDToken: idToken,
                 accessToken: result.user.accessToken.tokenString
             )
-            _ = try await Auth.auth().signIn(with: credential)
+            let authResult = try await Auth.auth().signIn(with: credential)
+            await createOrFetchUserProfile(for: authResult.user)
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Sign-in could not be completed. Please try again."
         }
     }
 }

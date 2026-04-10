@@ -165,25 +165,77 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
 
     // MARK: - Geohash Utilities
 
+    private static let geohashBase32 = Array("0123456789bcdefghjkmnpqrstuvwxyz")
+
     /// Encodes a coordinate to a geohash string for anonymized location storage.
     func encodeGeohash(_ coordinate: CLLocationCoordinate2D, precision: Int = 7) -> String {
-        // TODO: Implement or import a geohash library (e.g., GeoFire)
-        // Placeholder returns coordinate as string
-        return "\(coordinate.latitude.rounded(toPlaces: 3)),\(coordinate.longitude.rounded(toPlaces: 3))"
+        let base32 = Self.geohashBase32
+        var latRange = (-90.0, 90.0)
+        var lonRange = (-180.0, 180.0)
+        var isLon = true
+        var bits = 0
+        var charIndex = 0
+        var hash = ""
+
+        while hash.count < precision {
+            let mid: Double
+            if isLon {
+                mid = (lonRange.0 + lonRange.1) / 2
+                if coordinate.longitude >= mid {
+                    charIndex = charIndex * 2 + 1
+                    lonRange.0 = mid
+                } else {
+                    charIndex = charIndex * 2
+                    lonRange.1 = mid
+                }
+            } else {
+                mid = (latRange.0 + latRange.1) / 2
+                if coordinate.latitude >= mid {
+                    charIndex = charIndex * 2 + 1
+                    latRange.0 = mid
+                } else {
+                    charIndex = charIndex * 2
+                    latRange.1 = mid
+                }
+            }
+            isLon.toggle()
+            bits += 1
+
+            if bits == 5 {
+                hash.append(base32[charIndex])
+                bits = 0
+                charIndex = 0
+            }
+        }
+        return hash
     }
 
     /// Decodes a geohash back to a coordinate (used for geofence centers only, never shared raw).
     func decodeGeohash(_ geohash: String) -> CLLocationCoordinate2D? {
-        // TODO: Implement geohash decoding
-        return nil
-    }
-}
+        let base32 = Self.geohashBase32
+        var latRange = (-90.0, 90.0)
+        var lonRange = (-180.0, 180.0)
+        var isLon = true
 
-// MARK: - Double Extension
+        for char in geohash.lowercased() {
+            guard let index = base32.firstIndex(of: char) else { return nil }
+            let value = base32.distance(from: base32.startIndex, to: index)
 
-private extension Double {
-    func rounded(toPlaces places: Int) -> Double {
-        let divisor = pow(10.0, Double(places))
-        return (self * divisor).rounded() / divisor
+            for i in stride(from: 4, through: 0, by: -1) {
+                let bit = (value >> i) & 1
+                if isLon {
+                    let mid = (lonRange.0 + lonRange.1) / 2
+                    if bit == 1 { lonRange.0 = mid } else { lonRange.1 = mid }
+                } else {
+                    let mid = (latRange.0 + latRange.1) / 2
+                    if bit == 1 { latRange.0 = mid } else { latRange.1 = mid }
+                }
+                isLon.toggle()
+            }
+        }
+
+        let latitude = (latRange.0 + latRange.1) / 2
+        let longitude = (lonRange.0 + lonRange.1) / 2
+        return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
     }
 }

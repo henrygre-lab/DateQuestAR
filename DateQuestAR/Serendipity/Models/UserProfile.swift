@@ -19,6 +19,8 @@ struct UserProfile: Identifiable, Codable {
     var preferences: MatchPreferences
     var privacySettings: PrivacySettings
     var gamification: GamificationProfile
+    var isProfileComplete: Bool = false
+    var trustScore: Double = 0.5
     var createdAt: Date
     var lastActive: Date
 

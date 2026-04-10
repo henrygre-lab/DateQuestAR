@@ -134,6 +134,8 @@ struct OnboardingView: View {
                         level: 1, xp: 0, badges: [],
                         questsCompleted: 0, totalConnections: 0
                     ),
+                    isProfileComplete: true,
+                    trustScore: 0.9,
                     createdAt: Date(),
                     lastActive: Date()
                 )
