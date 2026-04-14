@@ -127,6 +127,15 @@ Loading (SplashView)
 
 ## Known Limitations / TODOs
 
+## Gender Balance & Safety Enhancements (In Progress on `feature/gender-balance-safety-v1`)
+- Asymmetric alert caps, women-first queuing, squad radar defaults, intent/vibe filtering
+- Dynamic `BalanceEnforcer` with male waitlist when male % > 55%
+- Tiered identity verification via Persona/Onfido proxy
+- Addresses top risks from `POTENTIAL_ISSUES.md` (#1 Gender Imbalance + #2 Misrepresentation & Lying)
+- Every changed file will include Vibe Coding Security Checklist compliance header
+
+> **Security Note**: All code changes in this feature strictly follow the [Vibe Coding Security Checklist](SECURITY_CHECKLIST.md). No hardcoded secrets, full auth + ownership checks, minimal data exposure.
+
 - Geohash encode/decode is currently a placeholder — integrate GeoFire or a native geohash library
 - Apple Sign-In is stubbed; OAuth flow not yet implemented (requires paid Apple Developer Program)
 - Google Sign-In is implemented and functional
