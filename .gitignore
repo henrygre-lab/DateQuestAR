@@ -25,3 +25,18 @@ GoogleService-Info.plist
 
 # Swift Package Manager
 .build/
+
+# === SECURITY: Never commit secrets (Vibe Coding Security Checklist) ===
+GoogleService-Info.plist
+google-services.json
+*.env*
+Serendipity/Serendipity_old/
+
+# === Xcode / Build artifacts ===
+DerivedData/
+*.xcuserdatad/
+*.xccheckout
+*.xcworkspace/xcuserdata/
+build/
+.DS_Store
+
