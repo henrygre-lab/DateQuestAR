@@ -14,14 +14,19 @@ Serendipity flips the traditional dating app model. Instead of swiping endlessly
 - Haptic feedback ramps up in intensity as distance closes (0.25 mi → 0.0 mi)
 - Auto-pauses when entering user-defined zones (home, work, etc.)
 
-### Proximity-Driven Match Flow
+### Proximity-Driven Match Flow (Updated)
 
-| Distance  | Status             | Experience                   |
-| --------- | ------------------ | ---------------------------- |
-| < 0.25 mi | `inProximity`      | Alert sent, match card shown |
-| < 0.10 mi | `revealed`         | Profile photos unlock        |
-| Active    | `icebreakerActive` | AR mini-game triggered       |
-| Post-meet | `connected`        | NameDrop / contact exchange  |
+| Distance / Stage | Reveal Level | Experience |
+|------------------|--------------|------------|
+| < 0.25 mi (`inProximity`) | Heavily blurred | Alert + vibe badges only (after `AlertCapManager` + women-first queue) |
+| Icebreaker active | Progressive unblur during shared AR | Collaborative challenge (Trivia/Gesture/AR Object/Word Association) |
+| Icebreaker completed | Mostly clear + IG tease | "Vibe passed? NameDrop to connect" |
+| Post-NameDrop `connected` | **Full profile** | Official match + post-meet accuracy rating → trust score |
+
+**Additional Rules**  
+- `EncounterSession` persists 10–15 min (even if users drift apart) for gamification momentum.  
+- 3D proximity (horizontal + `CMAltimeter` altitude) and motion context (`CMMotionActivityManager` + speed) inside active sessions.  
+- Strict walking/running filter for new sessions; relaxed once active.
 
 ### AR Icebreakers
 
@@ -45,12 +50,15 @@ Matches are scored 0.0–1.0 across four dimensions before being surfaced:
 
 Default threshold to qualify as a match: **0.80**. Users can adjust this in settings.
 
-### Privacy & Safety
+### Safety & Privacy (Strengthened)
 
-- Location stored as **geohash** (precision 7) — never raw coordinates
+- Geohash-only storage (precision 7).  
+- Mandatory ID + live selfie verification path.  
+- Delayed reveal + AR icebreaker before full photos.  
+- Enhanced group anomaly detection and "Unsafe Proximity" reporting.
 - Three sharing modes: `precise`, `anonymized` (default), `hidden`
 - Configurable auto-pause geofence zones
-- Daily alert limits
+- Asymmetric daily alert caps via `AlertCapManager` (gender-aware limits)
 - User verification system with `unverified / pending / verified / flagged` states
 - Safety verification managed by `SafetyVerifier`
 - **Liveness detection** during onboarding: camera-based face landmark analysis (Vision framework) prompts 2 random actions (turn left, turn right, blink, smile) to confirm a real person
@@ -125,6 +133,10 @@ Loading (SplashView)
 
 > **Debug builds** include a "Developer Bypass" button on the login screen that skips authentication with a mock user profile.
 
+### Competitor Landscape
+
+Serendipity improves on Happn (AR gamified reveal vs. instant exposure), Breeze (spontaneous proximity vs. scheduled dates), Swerv (passive Quest Mode + AR vs. venue-only map), and First Round's On Me (vibe-first AI + trust flywheel vs. planned social). See `docs/COMPETITOR_ANALYSIS.md` for details.
+
 ## Known Limitations / TODOs
 
 ## Gender Balance & Safety Enhancements (In Progress on `feature/gender-balance-safety-v1`)
@@ -142,6 +154,12 @@ Loading (SplashView)
 - ProximityService (UWB/BLE) is not yet wired to MatchManager — real proximity events don't trigger match flow
 - AI preference alignment score is minimal (distance check only); expand with gender preferences, dealbreakers, and ML model
 - Post-meet rating pipeline is integrated (ratings flow through to trust level recalculation)
+
+## Launch Strategy (Phase 1 – Controlled Density & Female-First Acquisition)
+
+**Goal**: Reach balanced gender ratio and critical mass in high-density environments where the AR icebreaker experience shines.
+
+[Insert the full launch strategy draft I provided in the previous response here — the one covering college campuses, post-grad nightlife, Ft. Lauderdale Spring Break, festivals/concerts, tactics, metrics, and risk controls.]
 
 ## Design Considerations
 

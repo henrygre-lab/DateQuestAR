@@ -457,6 +457,13 @@ final class MatchManager: ObservableObject {
         currentIcebreaker = sample
     }
 
+    /// Called when the icebreaker challenge is completed successfully.
+    /// Awards XP via XPManager and clears the active icebreaker.
+    func completeIcebreaker() {
+        currentIcebreaker = nil
+        Task { await XPManager.shared.grantIcebreakerXP() }
+    }
+
     // MARK: - Post-Meet Rating
 
     func submitPostMeetRating(matchID: String, rating: Int) async {

@@ -59,3 +59,24 @@ Mon–Thu silence → users assume app is broken.
 - Post-meet mismatch rate
 - Trust score distribution
 - Weekday vs weekend activation %
+
+## 6. Coordinated Bad-Actor Groups (Harassment / Assault Risk)
+**Consequences if unaddressed**  
+Organized groups of men using the app to locate and harass women in public/nightlife/festival settings → safety incidents, bad press, regulatory issues, App Store rejection, mass female churn.
+
+**Mandated Mitigations**  
+- Server-side group/coordination anomaly detection (multiple male users pinging same woman in tight geohash/time window).  
+- Enhanced `SafetyVerifier` with stricter verification + behavioral flags.  
+- Aggressive women-first queuing + temporary "safe mode" in high-density male clusters.  
+- One-tap "Unsafe Proximity" reporting during/after icebreaker (immediate session termination + investigation).  
+- Event-specific geo-fence rules for nightlife/festivals/campuses.  
+- No raw location history; only ephemeral geohash + session data.  
+- Post-incident auto-flagging and tiered penalties (including propagation to correlated accounts).
+
+**Launch-Specific Note**  
+All campus, nightlife, spring-break, and festival zones require these controls before any marketing push.
+
+### Updated Beta Monitoring Targets (add)
+- Suspicious cluster rate (coordinated pings).  
+- Unsafe report rate by gender and location type.  
+- % of sessions terminated via safety reports.
