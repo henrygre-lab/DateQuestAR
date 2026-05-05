@@ -1,13 +1,16 @@
 import SwiftUI
+import Combine
 import Firebase
 import AppTrackingTransparency
 import AdSupport
 
+@main
 struct DateQuestARApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var authViewModel = AuthViewModel()
     @StateObject private var locationService = LocationService.shared
     @StateObject private var matchManager = MatchManager.shared
+    @StateObject private var alertCapManager = AlertCapManager.shared
     @StateObject private var balanceEnforcer = BalanceEnforcer.shared
     @Environment(\.scenePhase) private var scenePhase
 
@@ -17,6 +20,7 @@ struct DateQuestARApp: App {
                 .environmentObject(authViewModel)
                 .environmentObject(locationService)
                 .environmentObject(matchManager)
+                .environmentObject(alertCapManager)
                 .environmentObject(balanceEnforcer)
                 .preferredColorScheme(.dark)
                 .onAppear {

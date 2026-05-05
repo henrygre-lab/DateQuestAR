@@ -7,14 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		BA60A3D52FA2E29D001D4B79 /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = BA60A3D42FA2E29D001D4B79 /* FirebaseAnalytics */; };
+		BA60A3D72FA2E29D001D4B79 /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = BA60A3D62FA2E29D001D4B79 /* FirebaseAuth */; };
+		BA60A3D92FA2E29D001D4B79 /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = BA60A3D82FA2E29D001D4B79 /* FirebaseFirestore */; };
+		BA60A3DB2FA2E29D001D4B79 /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = BA60A3DA2FA2E29D001D4B79 /* FirebaseFunctions */; };
+		BA60A3DD2FA2E29D001D4B79 /* FirebaseRemoteConfig in Frameworks */ = {isa = PBXBuildFile; productRef = BA60A3DC2FA2E29D001D4B79 /* FirebaseRemoteConfig */; };
+		BA60A3DF2FA2E29D001D4B79 /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = BA60A3DE2FA2E29D001D4B79 /* FirebaseStorage */; };
 		BA66D3862F5108810085134C /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = BA66D3852F5108810085134C /* GoogleSignIn */; };
-		BA8CC3112F4D0333003F339C /* FirebaseCore in Frameworks */ = {isa = PBXBuildFile; productRef = BA8CC3012F4D0333003F339C /* FirebaseCore */; };
-		BA8CC3122F4D0333003F339C /* FirebaseAuth in Frameworks */ = {isa = PBXBuildFile; productRef = BA8CC3022F4D0333003F339C /* FirebaseAuth */; };
-		BA8CC3132F4D0333003F339C /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = BA8CC3032F4D0333003F339C /* FirebaseFirestore */; };
-		BA8CC3142F4D0333003F339C /* FirebaseStorage in Frameworks */ = {isa = PBXBuildFile; productRef = BA8CC3042F4D0333003F339C /* FirebaseStorage */; };
-		BA8CC3152F4D0333003F339C /* FirebaseFunctions in Frameworks */ = {isa = PBXBuildFile; productRef = BA8CC3052F4D0333003F339C /* FirebaseFunctions */; };
-		BA8CC3162F4D0333003F339C /* FirebaseAnalytics in Frameworks */ = {isa = PBXBuildFile; productRef = BA8CC3062F4D0333003F339C /* FirebaseAnalytics */; };
-		BA8CC3172F4D0333003F339C /* FirebaseRemoteConfig in Frameworks */ = {isa = PBXBuildFile; productRef = BA8CC3072F4D0333003F339C /* FirebaseRemoteConfig */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -35,17 +34,13 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		BA48EF722FA346A000630D3B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		BA8CC1052F4D0333003F339C /* Serendipity.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Serendipity.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		BA8CC1122F4D0335003F339C /* SerendipityTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SerendipityTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		BA8CC11C2F4D0335003F339C /* SerendipityUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SerendipityUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		BA8CC1072F4D0333003F339C /* Serendipity */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = Serendipity;
-			sourceTree = "<group>";
-		};
 		BA8CC1152F4D0335003F339C /* SerendipityTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = SerendipityTests;
@@ -98,14 +93,13 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BA60A3D52FA2E29D001D4B79 /* FirebaseAnalytics in Frameworks */,
+				BA60A3D92FA2E29D001D4B79 /* FirebaseFirestore in Frameworks */,
+				BA60A3DB2FA2E29D001D4B79 /* FirebaseFunctions in Frameworks */,
+				BA60A3DD2FA2E29D001D4B79 /* FirebaseRemoteConfig in Frameworks */,
+				BA60A3DF2FA2E29D001D4B79 /* FirebaseStorage in Frameworks */,
+				BA60A3D72FA2E29D001D4B79 /* FirebaseAuth in Frameworks */,
 				BA66D3862F5108810085134C /* GoogleSignIn in Frameworks */,
-				BA8CC3112F4D0333003F339C /* FirebaseCore in Frameworks */,
-				BA8CC3122F4D0333003F339C /* FirebaseAuth in Frameworks */,
-				BA8CC3132F4D0333003F339C /* FirebaseFirestore in Frameworks */,
-				BA8CC3142F4D0333003F339C /* FirebaseStorage in Frameworks */,
-				BA8CC3152F4D0333003F339C /* FirebaseFunctions in Frameworks */,
-				BA8CC3162F4D0333003F339C /* FirebaseAnalytics in Frameworks */,
-				BA8CC3172F4D0333003F339C /* FirebaseRemoteConfig in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -136,7 +130,7 @@
 		BA8CC0FC2F4D0333003F339C = {
 			isa = PBXGroup;
 			children = (
-				BA8CC1072F4D0333003F339C /* Serendipity */,
+				BA48EF722FA346A000630D3B /* Info.plist */,
 				BA8CC2002F4D0333003F339C /* App */,
 				BA8CC2012F4D0333003F339C /* Models */,
 				BA8CC2022F4D0333003F339C /* ViewModels */,
@@ -177,7 +171,6 @@
 			dependencies = (
 			);
 			fileSystemSynchronizedGroups = (
-				BA8CC1072F4D0333003F339C /* Serendipity */,
 				BA8CC2002F4D0333003F339C /* App */,
 				BA8CC2012F4D0333003F339C /* Models */,
 				BA8CC2022F4D0333003F339C /* ViewModels */,
@@ -188,14 +181,13 @@
 			);
 			name = Serendipity;
 			packageProductDependencies = (
-				BA8CC3012F4D0333003F339C /* FirebaseCore */,
-				BA8CC3022F4D0333003F339C /* FirebaseAuth */,
-				BA8CC3032F4D0333003F339C /* FirebaseFirestore */,
-				BA8CC3042F4D0333003F339C /* FirebaseStorage */,
-				BA8CC3052F4D0333003F339C /* FirebaseFunctions */,
-				BA8CC3062F4D0333003F339C /* FirebaseAnalytics */,
-				BA8CC3072F4D0333003F339C /* FirebaseRemoteConfig */,
 				BA66D3852F5108810085134C /* GoogleSignIn */,
+				BA60A3D42FA2E29D001D4B79 /* FirebaseAnalytics */,
+				BA60A3D62FA2E29D001D4B79 /* FirebaseAuth */,
+				BA60A3D82FA2E29D001D4B79 /* FirebaseFirestore */,
+				BA60A3DA2FA2E29D001D4B79 /* FirebaseFunctions */,
+				BA60A3DC2FA2E29D001D4B79 /* FirebaseRemoteConfig */,
+				BA60A3DE2FA2E29D001D4B79 /* FirebaseStorage */,
 			);
 			productName = Serendipity;
 			productReference = BA8CC1052F4D0333003F339C /* Serendipity.app */;
@@ -280,8 +272,8 @@
 			mainGroup = BA8CC0FC2F4D0333003F339C;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				BA8CC3002F4D0333003F339C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 				BAE139552F50EB160099EF36 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+				BA60A3D32FA2E29D001D4B79 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = BA8CC1062F4D0333003F339C /* Products */;
@@ -481,12 +473,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = HRJW9336Q5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Serendipity/Info.plist;
+				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Serendipity uses Bluetooth to detect nearby matches.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Serendipity uses the camera for the AR radar experience.";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Serendipity uses your location to find nearby matches during quest mode.";
@@ -505,6 +498,7 @@
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_BUNDLE_IDENTIFIER = henry.Serendipity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -520,12 +514,13 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = "";
+				DEVELOPMENT_TEAM = HRJW9336Q5;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Serendipity/Info.plist;
+				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Serendipity uses Bluetooth to detect nearby matches.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Serendipity uses the camera for the AR radar experience.";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Serendipity uses your location to find nearby matches during quest mode.";
@@ -544,6 +539,7 @@
 				OTHER_LDFLAGS = "-ObjC";
 				PRODUCT_BUNDLE_IDENTIFIER = henry.Serendipity;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -676,12 +672,12 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		BA8CC3002F4D0333003F339C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
+		BA60A3D32FA2E29D001D4B79 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/firebase/firebase-ios-sdk.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 11.0.0;
+				minimumVersion = 12.12.1;
 			};
 		};
 		BAE139552F50EB160099EF36 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
@@ -695,45 +691,40 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		BA60A3D42FA2E29D001D4B79 /* FirebaseAnalytics */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BA60A3D32FA2E29D001D4B79 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAnalytics;
+		};
+		BA60A3D62FA2E29D001D4B79 /* FirebaseAuth */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BA60A3D32FA2E29D001D4B79 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseAuth;
+		};
+		BA60A3D82FA2E29D001D4B79 /* FirebaseFirestore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BA60A3D32FA2E29D001D4B79 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFirestore;
+		};
+		BA60A3DA2FA2E29D001D4B79 /* FirebaseFunctions */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BA60A3D32FA2E29D001D4B79 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseFunctions;
+		};
+		BA60A3DC2FA2E29D001D4B79 /* FirebaseRemoteConfig */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BA60A3D32FA2E29D001D4B79 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseRemoteConfig;
+		};
+		BA60A3DE2FA2E29D001D4B79 /* FirebaseStorage */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BA60A3D32FA2E29D001D4B79 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
+			productName = FirebaseStorage;
+		};
 		BA66D3852F5108810085134C /* GoogleSignIn */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = BAE139552F50EB160099EF36 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
 			productName = GoogleSignIn;
-		};
-		BA8CC3012F4D0333003F339C /* FirebaseCore */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = BA8CC3002F4D0333003F339C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseCore;
-		};
-		BA8CC3022F4D0333003F339C /* FirebaseAuth */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = BA8CC3002F4D0333003F339C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseAuth;
-		};
-		BA8CC3032F4D0333003F339C /* FirebaseFirestore */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = BA8CC3002F4D0333003F339C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseFirestore;
-		};
-		BA8CC3042F4D0333003F339C /* FirebaseStorage */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = BA8CC3002F4D0333003F339C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseStorage;
-		};
-		BA8CC3052F4D0333003F339C /* FirebaseFunctions */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = BA8CC3002F4D0333003F339C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseFunctions;
-		};
-		BA8CC3062F4D0333003F339C /* FirebaseAnalytics */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = BA8CC3002F4D0333003F339C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseAnalytics;
-		};
-		BA8CC3072F4D0333003F339C /* FirebaseRemoteConfig */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = BA8CC3002F4D0333003F339C /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
-			productName = FirebaseRemoteConfig;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

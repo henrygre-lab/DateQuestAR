@@ -16,16 +16,17 @@ Serendipity flips the traditional dating app model. Instead of swiping endlessly
 
 ### Proximity-Driven Match Flow (Updated)
 
-| Distance / Stage | Reveal Level | Experience |
-|------------------|--------------|------------|
-| < 0.25 mi (`inProximity`) | Heavily blurred | Alert + vibe badges only (after `AlertCapManager` + women-first queue) |
-| Icebreaker active | Progressive unblur during shared AR | Collaborative challenge (Trivia/Gesture/AR Object/Word Association) |
-| Icebreaker completed | Mostly clear + IG tease | "Vibe passed? NameDrop to connect" |
-| Post-NameDrop `connected` | **Full profile** | Official match + post-meet accuracy rating → trust score |
+| Distance / Stage          | Reveal Level                        | Experience                                                             |
+| ------------------------- | ----------------------------------- | ---------------------------------------------------------------------- |
+| < 0.25 mi (`inProximity`) | Heavily blurred                     | Alert + vibe badges only (after `AlertCapManager` + women-first queue) |
+| Icebreaker active         | Progressive unblur during shared AR | Collaborative challenge (Trivia/Gesture/AR Object/Word Association)    |
+| Icebreaker completed      | Mostly clear + IG tease             | "Vibe passed? NameDrop to connect"                                     |
+| Post-NameDrop `connected` | **Full profile**                    | Official match + post-meet accuracy rating → trust score               |
 
-**Additional Rules**  
-- `EncounterSession` persists 10–15 min (even if users drift apart) for gamification momentum.  
-- 3D proximity (horizontal + `CMAltimeter` altitude) and motion context (`CMMotionActivityManager` + speed) inside active sessions.  
+**Additional Rules**
+
+- `EncounterSession` persists 10–15 min (even if users drift apart) for gamification momentum.
+- 3D proximity (horizontal + `CMAltimeter` altitude) and motion context (`CMMotionActivityManager` + speed) inside active sessions.
 - Strict walking/running filter for new sessions; relaxed once active.
 
 ### AR Icebreakers
@@ -52,9 +53,9 @@ Default threshold to qualify as a match: **0.80**. Users can adjust this in sett
 
 ### Safety & Privacy (Strengthened)
 
-- Geohash-only storage (precision 7).  
-- Mandatory ID + live selfie verification path.  
-- Delayed reveal + AR icebreaker before full photos.  
+- Geohash-only storage (precision 7).
+- Mandatory ID + live selfie verification path.
+- Delayed reveal + AR icebreaker before full photos.
 - Enhanced group anomaly detection and "Unsafe Proximity" reporting.
 - Three sharing modes: `precise`, `anonymized` (default), `hidden`
 - Configurable auto-pause geofence zones
@@ -140,6 +141,7 @@ Serendipity improves on Happn (AR gamified reveal vs. instant exposure), Breeze 
 ## Known Limitations / TODOs
 
 ## Gender Balance & Safety Enhancements (In Progress on `feature/gender-balance-safety-v1`)
+
 - Asymmetric alert caps, women-first queuing, squad radar defaults, intent/vibe filtering
 - Dynamic `BalanceEnforcer` with male waitlist when male % > 55%
 - Tiered identity verification via Persona/Onfido proxy
@@ -159,7 +161,45 @@ Serendipity improves on Happn (AR gamified reveal vs. instant exposure), Breeze 
 
 **Goal**: Reach balanced gender ratio and critical mass in high-density environments where the AR icebreaker experience shines.
 
-[Insert the full launch strategy draft I provided in the previous response here — the one covering college campuses, post-grad nightlife, Ft. Lauderdale Spring Break, festivals/concerts, tactics, metrics, and risk controls.]
+## Launch Strategy (Phase 1 – Controlled Density & Female-First Acquisition)
+
+**Goal**: Achieve balanced gender ratio (target 45–55% women) and critical mass in high-density environments before national rollout. Focus on locations where proximity + AR icebreakers deliver immediate value and women feel safer in groups.
+
+## Target Segments (Prioritized)
+
+1. **College Campuses** (Q3–Q4 2026 pilot)  
+   Top 20–30 U.S. universities (UCLA, USC, NYU, UT Austin, University of Florida, etc.).  
+   Tactics: Female student ambassadors, sorority partnerships, free Verified Priority for women (first 90 days), on-campus AR demo pop-ups.
+
+2. **Post-Grad Nightlife Spots**  
+   Major cities (NYC, San Francisco Bay Area, Chicago, Miami, Austin, Los Angeles).  
+   Tactics: Squad Radar default in nightlife geohashes, sponsor quests with bars ("Free drink for verified matches"), geo-fence auto-pause.
+
+3. **Popular Travel Destinations & Spring Break**  
+   Ft. Lauderdale / Miami Beach Spring Break (March 2027), South Beach, Cancún, Cabo, etc.  
+   Tactics: Temporary "Spring Break Mode" with Micro-Quest boosts, geo-targeted ads emphasizing safety + fun AR.
+
+4. **Festivals & Concerts**  
+   Coachella, Lollapalooza, EDC, Austin City Limits, etc.  
+   Tactics: Event-specific tighter radius + forced Squad Radar, post-event badges/XP.
+
+## Success Metrics (Tied to Beta Monitoring)
+
+- Gender ping ratio per session ≥ 40% women in target zones within first 30 days.
+- Average alerts per user per hour stays within asymmetric caps.
+- Post-meet mismatch rate < 15%.
+- Unsafe report rate < 0.5%.
+- Activation % during evenings/weekends/festivals vs. weekday baseline.
+
+## Non-Negotiable Risk Controls (Before Any Marketing Push)
+
+- All zones require enhanced `SafetyVerifier` (group anomaly detection, stricter verification).
+- Women-first queuing + temporary "safe mode" in high-density male clusters.
+- Event-specific geo-fence rules and one-tap "Unsafe Proximity" reporting.
+- 50%+ of early marketing budget on female acquisition.
+- Aggressive monitoring of suspicious cluster rate and safety reports.
+
+This density-first, female-first approach minimizes low-density dead zones (Risk #5) while stress-testing the full stack in real high-energy environments. See `POTENTIAL_ISSUES.md` for full risk mitigations.
 
 ## Design Considerations
 
@@ -168,4 +208,3 @@ See [docs/POTENTIAL_ISSUES.md](docs/POTENTIAL_ISSUES.md) for critical risks and 
 ## License
 
 Copyright 2026 Serendipity. All rights reserved. Unauthorized reproduction, distribution, or modification is prohibited.
-

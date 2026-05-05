@@ -11,7 +11,6 @@
 
 import Foundation
 import FirebaseFirestore
-import FirebaseFirestoreSwift
 
 // MARK: - Reveal Stage
 

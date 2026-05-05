@@ -10,6 +10,7 @@
 
 import Foundation
 import FirebaseAuth
+import Combine
 
 // MARK: - XPManager
 

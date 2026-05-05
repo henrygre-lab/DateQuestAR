@@ -12,7 +12,7 @@
 
 import Foundation
 import FirebaseFirestore
-import FirebaseFirestoreSwift
+import Combine
 
 // MARK: - AlertCapManager
 // Central manager for asymmetric alert caps and gender balance safety features

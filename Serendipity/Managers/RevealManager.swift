@@ -14,7 +14,7 @@
 
 import Foundation
 import FirebaseFirestore
-import FirebaseFirestoreSwift
+import Combine
 
 // MARK: - RevealManager
 
