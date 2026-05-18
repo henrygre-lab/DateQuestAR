@@ -150,7 +150,7 @@ Serendipity improves on Happn (AR gamified reveal vs. instant exposure), Breeze 
 
 > **Security Note**: All code changes in this feature strictly follow the [Vibe Coding Security Checklist](SECURITY_CHECKLIST.md). No hardcoded secrets, full auth + ownership checks, minimal data exposure.
 
-- Geohash encode/decode is currently a placeholder — integrate GeoFire or a native geohash library
+- Native geohash encode/decode (precision 7) implemented in Utilities/Geohash.swift — ready for LocationService integration
 - Apple Sign-In is stubbed; OAuth flow not yet implemented (requires paid Apple Developer Program)
 - Google Sign-In is implemented and functional
 - ProximityService (UWB/BLE) is not yet wired to MatchManager — real proximity events don't trigger match flow

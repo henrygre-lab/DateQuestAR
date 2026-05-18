@@ -44,6 +44,32 @@ struct RadarView: View {
                 bottomPanel
             }
         }
+        #if DEBUG
+        .overlay(alignment: .top) {
+            VStack(spacing: 4) {
+                Text("Quest Mode: \(locationService.isScanning ? "Active" : "Paused")")
+                    .foregroundColor(locationService.isScanning ? .green : .gray)
+
+                Text("Geohash: \(locationService.currentGeohash ?? "—")")
+                    .font(.caption)
+                    .monospaced()
+
+                Text("\(matchManager.nearbyUsers.count) nearby matches")
+                    .font(.headline)
+
+                if !matchManager.nearbyUsers.isEmpty {
+                    List(matchManager.nearbyUsers.prefix(5), id: \.uid) { user in
+                        Text(user.displayName)
+                    }
+                    .frame(maxHeight: 160)
+                }
+            }
+            .padding(8)
+            .background(.black.opacity(0.6))
+            .foregroundStyle(.white)
+            .padding(.top, 60) // clear the existing topBar
+        }
+        #endif
         .onChange(of: matchManager.nearbyMatch) { _, match in
             guard let match else { return }
             proximity = match.status == .revealed ? 0.05 : 0.18

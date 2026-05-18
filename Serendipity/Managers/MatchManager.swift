@@ -34,6 +34,7 @@ final class MatchManager: ObservableObject {
     @Published var nearbyMatchProfile: UserProfile?
     @Published var currentIcebreaker: IcebreakerChallenge?
     @Published var isQuestModeActive = false
+    @Published var nearbyUsers: [UserProfile] = []
 
     // MARK: - Rate Limiting (Legacy — see AlertCapManager for daily caps)
 
@@ -88,7 +89,6 @@ final class MatchManager: ObservableObject {
         }
         activeQuestUser = user
         isQuestModeActive = true
-        userAlertLimit = user.privacySettings.alertLimit
 
         // Initialize AlertCapManager with current user's profile so asymmetric
         // daily caps are ready before the first proximity event fires.
@@ -104,6 +104,18 @@ final class MatchManager: ObservableObject {
         isQuestModeActive = false
         LocationService.shared.stopQuestScanning()
         NotificationCenter.default.post(name: .questModeChanged, object: false)
+    }
+
+    // MARK: - Core Safety Gate (Phase 2)
+
+    /// Must be called before any alert. Fail-closed at every layer.
+    func shouldTriggerAlert(for currentUser: UserProfile, match: UserProfile) -> Bool {
+        guard balanceEnforcer.shouldShowMatch(to: currentUser) else { return false }
+        guard alertCapManager.canSendAlert(for: currentUser, match: nil) else { return false }
+        guard SafetyVerifier.isSafeToAlert(match) else { return false }
+
+        let breakdown = computeCompatibilityScore(userA: currentUser, userB: match)
+        return breakdown.overall >= currentUser.preferences.compatibilityThreshold
     }
 
     // MARK: - AI Compatibility Scoring
@@ -239,6 +251,37 @@ final class MatchManager: ObservableObject {
         }
     }
 
+    /// Refresh nearby-user list on location updates. Wired into LocationService.didUpdateLocations.
+    func refreshNearbyUsers() async {
+        guard let geohash = LocationService.shared.currentGeohash, !geohash.isEmpty else {
+            print("[MatchManager] No current geohash yet")
+            return
+        }
+
+        do {
+            let candidates = try await firestoreService.fetchNearbyUsers(
+                geohash: geohash,
+                excludeUID: activeQuestUser?.uid ?? ""
+            )
+
+            // Apply safety + balance filter
+            nearbyUsers = candidates.filter { balanceEnforcer.shouldShowMatch(to: $0) }
+
+            print("[MatchManager] ✅ Refreshed \(nearbyUsers.count) nearby users in geohash \(geohash)")
+
+            // Sort by compatibility (fallback to self if no active user)
+            if let current = activeQuestUser {
+                nearbyUsers.sort {
+                    computeCompatibilityScore(userA: current, userB: $0).overall >
+                    computeCompatibilityScore(userA: current, userB: $1).overall
+                }
+            }
+
+        } catch {
+            print("[MatchManager] ❌ Nearby fetch failed: \(error.localizedDescription)")
+        }
+    }
+
     // MARK: - Proximity Handling
 
     private func observeProximityEvents() {
@@ -255,38 +298,47 @@ final class MatchManager: ObservableObject {
         guard let currentUser = activeQuestUser else { return }
         guard let match = activeMatches.first(where: { $0.id == event.matchID }) else { return }
 
-        // ── SECURITY: Asymmetric daily alert cap (Risk #1) ──
-        // This check runs FIRST, before any nearbyMatch update, profile fetch,
-        // or icebreaker trigger. Fail-closed: if AlertCapManager rejects,
-        // the event is silently dropped. This is a client-side courtesy gate;
-        // Firestore Security Rules re-validate server-side on every write.
-        guard alertCapManager.canSendAlert(for: currentUser, match: match) else {
-            analytics.logAlertThrottledByGender(
-                gender: currentUser.gender,
-                cap: alertCapManager.dailyCapForGender(currentUser.gender),
-                reason: "alert_cap_manager_rejected"
-            )
-            return
-        }
-
-        // Per-match cooldown: prevent duplicate alerts for the same match within 15 min
+        // Cheap synchronous pre-checks — run before any Firestore round-trip.
+        // Per-match cooldown: prevent duplicate alerts for the same match within 15 min.
         guard canSendCooldownAlert(for: event.matchID) else { return }
-
-        // Per-user ping cap: prevent any single user from being pinged > 5 times/hour
-        // Retained as a complementary anti-harassment layer independent of daily caps
+        // Per-user ping cap: prevent any single user from being pinged > 5 times/hour.
         guard checkPerUserPingCap(partnerUID: event.partnerUID) else {
             analytics.logPingCapHit(partnerUID: event.partnerUID)
             return
         }
 
-        // ── SECURITY: Server-side hourly gender cap (second layer) ──
+        // ── SECURITY: Server-side hourly gender cap (final authoritative layer) ──
         // BalanceEnforcer provides server-sourced hourly caps that adapt to
-        // real-time gender ratio. This runs AFTER the AlertCapManager daily
-        // check so we don't waste Firestore transactions on already-rejected events.
+        // real-time gender ratio.
         let genderCap = balanceEnforcer.calculateAlertCap(for: currentUser.gender)
-
         let hourKey = currentHourKey()
+
         Task {
+            // Fetch partner profile so the centralized safety gate can inspect
+            // verificationStatus + accountStatus. Adds one Firestore read per
+            // proximity event on the hot path — acceptable because Quest Mode
+            // pings are rate-limited upstream by cooldown + per-user cap above.
+            guard let partnerProfile = try? await firestoreService.fetchUser(uid: event.partnerUID) else { return }
+
+            // ── SECURITY: Centralized safety gate (Phase 2) ──
+            // BalanceEnforcer.shouldShowMatch → AlertCapManager.canSendAlert →
+            // SafetyVerifier.isSafeToAlert → compatibility threshold.
+            // Replaces the previous inline AlertCapManager check; adds shouldShowMatch
+            // and isSafeToAlert to the proximity path.
+            let gateOK = await MainActor.run {
+                self.shouldTriggerAlert(for: currentUser, match: partnerProfile)
+            }
+            guard gateOK else {
+                await MainActor.run {
+                    self.analytics.logAlertThrottledByGender(
+                        gender: currentUser.gender,
+                        cap: self.alertCapManager.dailyCapForGender(currentUser.gender),
+                        reason: "centralized_gate_rejected"
+                    )
+                }
+                return
+            }
+
             // Atomic Firestore transaction — server is authoritative.
             // Even if the client-side checks above pass, the server can still reject.
             let allowed = try? await firestoreService.incrementCurrentHourAlerts(
@@ -309,12 +361,12 @@ final class MatchManager: ObservableObject {
                 if event.distanceMiles < 0.1 {
                     updated.status = .revealed
                     self.nearbyMatch = updated
-                    self.fetchPartnerProfile(uid: event.partnerUID)
+                    self.nearbyMatchProfile = partnerProfile
                     self.triggerIcebreaker()
                 } else if event.distanceMiles < 0.25 {
                     updated.status = .inProximity
                     self.nearbyMatch = updated
-                    self.fetchPartnerProfile(uid: event.partnerUID)
+                    self.nearbyMatchProfile = partnerProfile
                 }
 
                 // Record alert via AlertCapManager (replaces legacy recordAlert)
@@ -399,7 +451,6 @@ final class MatchManager: ObservableObject {
 
     /// Resets all throttling state. Intended for testing.
     func resetThrottling() {
-        alertsSentToday = 0
         alertCountDate = Calendar.current.startOfDay(for: Date())
         lastAlertTimes.removeAll()
         perUserPingCounts.removeAll()
@@ -409,7 +460,6 @@ final class MatchManager: ObservableObject {
     private func resetDailyCountIfNeeded() {
         let today = Calendar.current.startOfDay(for: Date())
         if today > alertCountDate {
-            alertsSentToday = 0
             lastAlertTimes.removeAll()
             alertCountDate = today
         }

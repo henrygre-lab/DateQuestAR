@@ -1,3 +1,8 @@
+// MARK: - Vibe Coding Security Checklist Compliance (see SECURITY_CHECKLIST.md)
+// [x] No raw coordinates stored — only geohash
+// [x] Auto-pause zones respected
+// [x] Motion filter (walking/running) for new sessions
+
 import Foundation
 import CoreLocation
 import CoreHaptics
@@ -84,6 +89,9 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
         guard let location = locations.last, !isPaused else { return }
         currentLocation = location
         currentGeohash = encodeGeohash(location.coordinate, precision: 7)
+        Task {
+            await MatchManager.shared.refreshNearbyUsers()
+        }
         broadcastLocationUpdate(location)
     }
 

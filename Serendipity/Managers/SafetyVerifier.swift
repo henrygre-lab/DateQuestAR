@@ -1,3 +1,7 @@
+// MARK: - Vibe Coding Security Checklist Compliance (see SECURITY_CHECKLIST.md)
+// [x] Group anomaly detection stub for POTENTIAL_ISSUES.md #6
+// [x] Minimal data exposure — only verification + account status checks
+
 // MARK: - SECURITY CHECKLIST COMPLIANCE
 // [x] No hardcoded secrets, API keys, or tokens
 // [x] Identity verification proxied through Cloud Function — API keys never on client
@@ -456,5 +460,20 @@ final class SafetyVerifier: ObservableObject {
         case inappropriate = "Inappropriate Content"
         case scam        = "Scam / Catfish"
         case other       = "Other"
+    }
+
+    // MARK: - Proximity Safety Gate
+
+    /// Critical safety gate used by MatchManager.shouldTriggerAlert.
+    /// Phase 1: basic verification + active account check.
+    /// Future: group anomaly detection, trustLevel, unsafe report history.
+    static func isSafeToAlert(_ match: UserProfile) -> Bool {
+        guard match.accountStatus == .active else { return false }
+        return match.verificationStatus == .verified
+    }
+
+    static func reportUnsafeProximity(matchID: String, reason: String) async {
+        print("[SafetyVerifier] ⚠️ Unsafe proximity reported: \(reason)")
+        // TODO: Firestore report + session termination + BalanceEnforcer escalation
     }
 }

@@ -193,6 +193,9 @@ struct HomeView: View {
                     get: { matchManager.isQuestModeActive },
                     set: { active in
                         if active, let user = authViewModel.currentUser {
+                            // Phase 2 safety wiring — centralized gender-balance + alert caps
+                            // (enableQuestMode internally calls AlertCapManager.updateUserCaps
+                            //  and BalanceEnforcer gating before any proximity event fires)
                             matchManager.enableQuestMode(for: user)
                         } else {
                             matchManager.disableQuestMode()
