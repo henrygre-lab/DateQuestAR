@@ -30,6 +30,13 @@ final class RevealManager: ObservableObject {
 
     @Published var activeSessions: [String: EncounterSession] = [:]  // matchID → session
 
+    #if DEBUG
+    /// When true, the real stage-machine logic runs but all Firestore reads/writes
+    /// and XP round-trips are skipped. Set by MatchManager during a demo encounter
+    /// so the walkthrough works with no backend. Compiled out of release builds.
+    var isDemoMode = false
+    #endif
+
     // MARK: - Dependencies
 
     private let db = Firestore.firestore()
@@ -65,6 +72,17 @@ final class RevealManager: ObservableObject {
             sessionTimeout: timeout,
             lastUpdated: now
         )
+
+        #if DEBUG
+        if isDemoMode {
+            // No Firestore: assign a synthetic ID and keep the session in memory only.
+            var savedSession = session
+            savedSession.id = "demo_session_\(match.id)"
+            activeSessions[match.id] = savedSession
+            analytics.logRevealSessionStarted(matchID: match.id)
+            return
+        }
+        #endif
 
         do {
             let docRef = try sessionsCollection.addDocument(from: session)
@@ -112,6 +130,10 @@ final class RevealManager: ObservableObject {
         session.lastUpdated = Timestamp(date: Date())
         updateLocalSession(session)
 
+        #if DEBUG
+        if isDemoMode { return }  // Local stage machine already advanced above.
+        #endif
+
         do {
             try await sessionsCollection.document(sessionID).updateData([
                 "revealProgress": session.revealProgress,
@@ -152,6 +174,13 @@ final class RevealManager: ObservableObject {
         session.lastUpdated = Timestamp(date: Date())
         updateLocalSession(session)
 
+        #if DEBUG
+        if isDemoMode {
+            analytics.logRevealCompleted(matchID: session.matchID)
+            return  // Skip Firestore + XP round-trip; local .connected state is set.
+        }
+        #endif
+
         do {
             try await sessionsCollection.document(sessionID).updateData([
                 "revealStage": RevealStage.connected.rawValue,
@@ -191,6 +220,13 @@ final class RevealManager: ObservableObject {
         guard let session = activeSessions[matchID], let sessionID = session.id else { return }
 
         activeSessions.removeValue(forKey: matchID)
+
+        #if DEBUG
+        if isDemoMode {
+            analytics.logRevealSessionEnded(matchID: matchID, finalStage: session.revealStage)
+            return
+        }
+        #endif
 
         do {
             // Mark session as ended by setting timeout to now (narrow write)

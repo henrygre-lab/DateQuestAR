@@ -36,6 +36,23 @@ final class MatchManager: ObservableObject {
     @Published var isQuestModeActive = false
     @Published var nearbyUsers: [UserProfile] = []
 
+    #if DEBUG
+    // MARK: - Demo State (DEBUG only)
+    // Drives the Developer Bypass walkthrough. Compiled out of release builds.
+
+    /// True while a simulated encounter is running (presents EncounterView).
+    @Published var isDemoEncounterActive = false
+    /// Live simulated distance to the demo match, in miles.
+    @Published var demoDistanceMiles: Double = 0.25
+    /// True once the match is close enough to start an icebreaker.
+    @Published var demoReadyForIcebreaker = false
+    /// Explains why a demo couldn't start (cap reached, queued, none compatible).
+    @Published var demoStatusMessage: String?
+
+    private let demoProximityProvider = DemoProximityProvider()
+    private var demoRevealTimer: Timer?
+    #endif
+
     // MARK: - Rate Limiting (Legacy — see AlertCapManager for daily caps)
 
     /// Deprecated: Use AlertCapManager.shared for daily alert cap enforcement.
@@ -72,8 +89,6 @@ final class MatchManager: ObservableObject {
     /// Retained for backward compatibility; will be removed in Phase 3.
     @available(*, deprecated, message: "Daily cap enforcement moved to AlertCapManager. Use alertCapManager.getCurrentDailyLimit() instead.")
     var userAlertLimit: Int = 20
-
-    private var currentAlertLimit: Int { userAlertLimit }
 
     private init() {
         observeProximityEvents()
@@ -429,7 +444,10 @@ final class MatchManager: ObservableObject {
     func canSendAlert(for matchID: String, dailyLimit: Int? = nil) -> Bool {
         resetDailyCountIfNeeded()
 
-        let limit = dailyLimit ?? currentAlertLimit
+        // Legacy fallback only — production caps run through AlertCapManager.
+        // Reading userAlertLimit here is inside this deprecated method, so no
+        // deprecation warning propagates to callers.
+        let limit = dailyLimit ?? userAlertLimit
         if alertsSentToday >= limit {
             return false
         }
@@ -576,4 +594,256 @@ final class MatchManager: ObservableObject {
             print("[MatchManager] Trust recalculation failed: \(error)")
         }
     }
+
+    #if DEBUG
+    // MARK: - Demo Encounter (DEBUG only)
+    //
+    // Self-contained walkthrough for the Developer Bypass build. This drives the
+    // exact same state (`nearbyMatch`, `nearbyMatchProfile`, `currentIcebreaker`,
+    // RevealManager sessions) that the production proximity path drives, but feeds
+    // it from an in-memory `DemoProximityProvider` instead of ProximityService.
+    //
+    // The real scoring, AlertCapManager caps, BalanceEnforcer gate, and
+    // SafetyVerifier check all run against the mock data so the architecture stays
+    // honest. Only the Firestore round-trips are skipped (see RevealManager.isDemoMode).
+
+    /// Starts a simulated high-compatibility encounter and presents the walkthrough.
+    /// The surfaced match is chosen by the real scoring, vibe filter, safety gate,
+    /// asymmetric alert caps, and BalanceEnforcer women-first queue — the same
+    /// systems production uses. If those systems block, no encounter opens and
+    /// `demoStatusMessage` explains why.
+    func startDemoEncounter(for currentUser: UserProfile) {
+        guard !isDemoEncounterActive else { return }
+        resetDemoState()   // Clear any stale state from a prior aborted run.
+
+        alertCapManager.updateUserCaps(for: currentUser)
+
+        // Viewer-level gates: asymmetric daily alert cap + women-first queuing.
+        guard alertCapManager.canSendAlert(for: currentUser, match: nil) else {
+            demoStatusMessage = "Daily alert cap reached (\(alertCapManager.getCurrentDailyLimit())/day). Caps are lower for women by design."
+            return
+        }
+        guard balanceEnforcer.shouldShowMatch(to: currentUser) else {
+            demoStatusMessage = "Held by the women-first queue — the local ratio is male-skewed right now."
+            return
+        }
+
+        // Candidate selection via real scoring + vibe + safety filters.
+        guard let (candidate, breakdown) = selectDemoMatch(for: currentUser) else {
+            demoStatusMessage = "No compatible match nearby right now — try adjusting your preferences."
+            return
+        }
+
+        demoStatusMessage = nil
+
+        // Make Quest Mode read as active without touching real location hardware.
+        activeQuestUser = currentUser
+        isQuestModeActive = true
+
+        // Route reveal state through the real stage machine, minus Firestore.
+        RevealManager.shared.isDemoMode = true
+
+        print("[MatchManager] Demo match: \(candidate.displayName), score=\(String(format: "%.2f", breakdown.overall)), cap=\(alertCapManager.getCurrentDailyLimit())")
+
+        let match = Match(
+            id: "demo_match_\(UUID().uuidString.prefix(8))",
+            userAUID: currentUser.uid,
+            userBUID: candidate.uid,
+            compatibilityScore: breakdown.overall,
+            scoreBreakdown: breakdown,
+            status: .inProximity,
+            createdAt: Date(),
+            meetupOccurred: false,
+            revealStage: .blurred
+        )
+
+        activeMatches = [match]
+        nearbyMatch = match
+        nearbyMatchProfile = candidate
+        demoReadyForIcebreaker = false
+        isDemoEncounterActive = true
+
+        // Record the alert through the real cap manager (Firestore sync no-ops for the mock).
+        Task { await alertCapManager.recordAlertSent(for: currentUser.uid, matchID: match.id) }
+
+        // Open the blurred session, then simulate the walk-up.
+        Task {
+            await RevealManager.shared.startRevealSession(for: match, currentUser: currentUser)
+            demoProximityProvider.startApproach { [weak self] distance in
+                self?.handleDemoDistance(distance)
+            }
+        }
+    }
+
+    /// Maps simulated distance to haptics + icebreaker readiness. Stays at the
+    /// `.blurred` stage — reveal only advances once the icebreaker begins.
+    private func handleDemoDistance(_ distance: Double) {
+        demoDistanceMiles = distance
+        let intensity = LocationService.shared.hapticIntensity(for: distance)
+        LocationService.shared.playProximityHaptic(intensity: intensity)
+        if distance <= 0.08 {
+            demoReadyForIcebreaker = true
+        }
+    }
+
+    /// Launches a demo icebreaker of the chosen type and begins progressive unblur.
+    func startDemoIcebreaker(type: IcebreakerChallenge.ChallengeType) {
+        guard var match = nearbyMatch else { return }
+        currentIcebreaker = makeDemoChallenge(type: type)
+        match.status = .icebreakerActive
+        nearbyMatch = match
+        updateActiveMatch(match)
+
+        // Ramp reveal progress 0 → ~0.65 while the challenge is played, so the
+        // partner's photo visibly unblurs (stage machine advances .blurred → .partial).
+        guard let sessionID = RevealManager.shared.activeSessions[match.id]?.id else { return }
+        demoRevealTimer?.invalidate()
+        var progress = RevealManager.shared.activeSessions[match.id]?.revealProgress ?? 0.0
+        demoRevealTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self else { return }
+                progress = min(0.65, progress + 0.07)
+                await RevealManager.shared.updateRevealProgress(for: sessionID, progress: progress)
+                if progress >= 0.65 { self.demoRevealTimer?.invalidate() }
+            }
+        }
+    }
+
+    /// Completes the icebreaker: finishes the unblur into the `.revealed` stage
+    /// (mostly clear + NameDrop prompt) and awards the same XP as production.
+    func completeDemoIcebreaker() {
+        demoRevealTimer?.invalidate()
+        demoRevealTimer = nil
+        currentIcebreaker = nil
+
+        guard var match = nearbyMatch,
+              let sessionID = RevealManager.shared.activeSessions[match.id]?.id else { return }
+
+        Task {
+            // Push past the .revealed threshold (≥ 0.7) so the stage machine advances.
+            await RevealManager.shared.updateRevealProgress(for: sessionID, progress: 0.85)
+            match.status = .revealed
+            match.revealStage = .revealed
+            nearbyMatch = match
+            updateActiveMatch(match)
+            await XPManager.shared.grantIcebreakerXP()
+        }
+    }
+
+    /// Mutual NameDrop → `.connected`: unlocks the full profile via the real
+    /// RevealManager gate (which only permits completion from `.revealed`).
+    func demoNameDrop() {
+        guard var match = nearbyMatch,
+              let sessionID = RevealManager.shared.activeSessions[match.id]?.id else { return }
+        Task {
+            await RevealManager.shared.completeReveal(for: sessionID)
+            match.status = .connected
+            match.revealStage = .connected
+            nearbyMatch = match
+            updateActiveMatch(match)
+        }
+    }
+
+    /// Runs the real trust-tier logic on the demo match's post-meet rating and
+    /// returns the resulting (possibly upgraded) trust level for the UI to show.
+    @discardableResult
+    func submitDemoRating(_ rating: Int) -> UserProfile.TrustLevel {
+        guard var candidate = nearbyMatchProfile else { return .bronze }
+        // Same rule as recalculateTrustLevel: gold + strong rating → platinum.
+        if candidate.trustLevel == .gold && rating >= 4 {
+            candidate.trustLevel = .platinum
+        } else if rating < 3 && (candidate.trustLevel == .gold || candidate.trustLevel == .platinum) {
+            candidate.trustLevel = .silver
+        }
+        nearbyMatchProfile = candidate
+        return candidate.trustLevel
+    }
+
+    /// Tears down all demo state and returns the app to a clean idle Home.
+    /// Safe to call repeatedly and safe if no demo is running.
+    func endDemoEncounter() {
+        let matchID = nearbyMatch?.id
+        Task {
+            if let matchID { await RevealManager.shared.endSession(for: matchID) }
+            RevealManager.shared.isDemoMode = false
+        }
+
+        resetDemoState()
+        isDemoEncounterActive = false
+        nearbyMatch = nil
+        nearbyMatchProfile = nil
+        activeMatches = []
+        isQuestModeActive = false
+        activeQuestUser = nil
+    }
+
+    // MARK: - Demo Helpers
+
+    /// Stops demo timers and resets transient walkthrough state without tearing
+    /// down the presented match. Used both to clean up and to guard against a
+    /// stale run leaking into a fresh one.
+    private func resetDemoState() {
+        demoProximityProvider.stop()
+        demoRevealTimer?.invalidate()
+        demoRevealTimer = nil
+        demoReadyForIcebreaker = false
+        demoDistanceMiles = 0.25
+        demoStatusMessage = nil
+        currentIcebreaker = nil
+    }
+
+    /// Selects the best mock match that clears the real safety, vibe, and
+    /// compatibility filters — mirroring `fetchPotentialMatches`. Returns nil if
+    /// the pool has no candidate above the user's compatibility threshold.
+    private func selectDemoMatch(for currentUser: UserProfile) -> (UserProfile, ScoreBreakdown)? {
+        let pool = DemoProximityProvider.makeDemoCandidatePool()
+        let scored: [(UserProfile, ScoreBreakdown)] = pool.compactMap { candidate in
+            guard candidate.accountStatus == .active else { return nil }
+            guard SafetyVerifier.isSafeToAlert(candidate) else { return nil }
+            guard scoreVibeCompatibility(currentUser.intentVibes, candidate.intentVibes) >= 0.6 else { return nil }
+            let breakdown = computeCompatibilityScore(userA: currentUser, userB: candidate)
+            guard breakdown.overall >= currentUser.preferences.compatibilityThreshold else { return nil }
+            return (candidate, breakdown)
+        }
+        return scored.max { $0.1.overall < $1.1.overall }
+    }
+
+    private func updateActiveMatch(_ match: Match) {
+        if let idx = activeMatches.firstIndex(where: { $0.id == match.id }) {
+            activeMatches[idx] = match
+        }
+    }
+
+    private func makeDemoChallenge(type: IcebreakerChallenge.ChallengeType) -> IcebreakerChallenge {
+        switch type {
+        case .trivia:
+            return IcebreakerChallenge(
+                id: UUID().uuidString, type: .trivia,
+                prompt: "What's the most spontaneous thing you've ever done?",
+                options: ["Booked a last-minute flight", "Quit a job on a whim",
+                          "Adopted a pet", "Said 'I love you' first"],
+                correctAnswer: nil, durationSeconds: 30
+            )
+        case .wordAssociation:
+            return IcebreakerChallenge(
+                id: UUID().uuidString, type: .wordAssociation,
+                prompt: "coffee",
+                options: ["morning", "espresso", "bookshop", "road trip"],
+                correctAnswer: nil, durationSeconds: 30
+            )
+        case .gesture:
+            return IcebreakerChallenge(
+                id: UUID().uuidString, type: .gesture,
+                prompt: "Mirror your match: wave hello 👋",
+                options: nil, correctAnswer: nil, durationSeconds: 20
+            )
+        case .arObject:
+            return IcebreakerChallenge(
+                id: UUID().uuidString, type: .arObject,
+                prompt: "Place the same glowing orb between you in AR",
+                options: nil, correctAnswer: nil, durationSeconds: 20
+            )
+        }
+    }
+    #endif
 }

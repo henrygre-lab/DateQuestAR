@@ -38,6 +38,11 @@ struct HomeView: View {
         .fullScreenCover(isPresented: $showRadar) {
             RadarView()
         }
+        #if DEBUG
+        .fullScreenCover(isPresented: $matchManager.isDemoEncounterActive) {
+            EncounterView()
+        }
+        #endif
         .onReceive(NotificationCenter.default.publisher(for: .matchAlertTapped)) { _ in
             showRadar = true
         }
@@ -250,6 +255,17 @@ struct HomeView: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Scanning. \(matchManager.activeMatches.count) potential matches nearby.")
             }
+
+            #if DEBUG
+            demoEncounterButton
+            if let msg = matchManager.demoStatusMessage {
+                demoStatusBanner(msg)
+                    .task(id: msg) {
+                        try? await Task.sleep(nanoseconds: 5_000_000_000)
+                        matchManager.demoStatusMessage = nil
+                    }
+            }
+            #endif
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(DQ.Spacing.xl)
@@ -334,6 +350,66 @@ struct HomeView: View {
         }
         .accessibilityLabel("A match is nearby. Tap to open radar.")
     }
+
+    // MARK: - Demo Control (DEBUG only)
+
+    #if DEBUG
+    /// Portfolio walkthrough trigger. Simulates a compatible match walking up so the
+    /// full proximity → reveal → icebreaker → NameDrop flow can be demoed with no
+    /// location/UWB hardware and no backend. See MatchManager.startDemoEncounter.
+    private var demoEncounterButton: some View {
+        Button {
+            guard let user = authViewModel.currentUser else { return }
+            UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+            matchManager.startDemoEncounter(for: user)
+        } label: {
+            HStack(spacing: DQ.Spacing.xs) {
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: 13, weight: .semibold))
+                Text("Simulate Encounter")
+                    .font(DQ.Typography.caption().bold())
+                Spacer()
+                Text("DEMO")
+                    .font(DQ.Typography.captionSmall())
+                    .foregroundStyle(DQ.Colors.warning)
+            }
+            .foregroundStyle(DQ.Colors.textSecondary)
+            .padding(.horizontal, DQ.Spacing.md)
+            .padding(.vertical, DQ.Spacing.sm)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: DQ.Radii.medium)
+                    .fill(DQ.Colors.surfaceElevated)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DQ.Radii.medium)
+                            .stroke(DQ.Colors.warning.opacity(0.3), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                    )
+            )
+        }
+        .accessibilityLabel("Simulate a demo encounter")
+        .accessibilityHint("Starts a scripted walkthrough of a nearby match")
+    }
+
+    /// Explains when the safety gates (alert caps, women-first queue, compatibility)
+    /// prevented a demo match from surfacing. Auto-dismisses after a few seconds.
+    private func demoStatusBanner(_ message: String) -> some View {
+        HStack(alignment: .top, spacing: DQ.Spacing.xs) {
+            Image(systemName: "info.circle.fill")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(DQ.Colors.info)
+            Text(message)
+                .font(DQ.Typography.captionSmall())
+                .foregroundStyle(DQ.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(DQ.Spacing.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: DQ.Radii.medium).fill(DQ.Colors.info.opacity(0.12)))
+        .transition(.opacity)
+        .accessibilityLabel(message)
+    }
+    #endif
 
     // MARK: - Helpers
 

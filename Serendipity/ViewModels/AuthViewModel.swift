@@ -1,3 +1,10 @@
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
+// [x] No hardcoded secrets, API keys, or tokens — Firebase config via GoogleService-Info.plist
+// [x] Sign-in errors surface generic messages — no account-existence leakage
+// [x] LocalAuthentication (Face ID / Touch ID) is a UI gate only; Firebase session is authoritative
+// [x] Google Sign-In token handled entirely by the GoogleSignIn SDK — never stored or logged by app
+// [x] Developer Bypass is #if DEBUG only — zero surface area in production builds
+
 import UIKit
 import Foundation
 import Combine
@@ -182,6 +189,10 @@ final class AuthViewModel: ObservableObject {
     // MARK: - Sign Out
 
     func signOut() {
+        #if DEBUG
+        // Tear down any demo walkthrough state so mock data never outlives the session.
+        MatchManager.shared.endDemoEncounter()
+        #endif
         do {
             try Auth.auth().signOut()
             appState = .unauthenticated

@@ -41,6 +41,29 @@ enum DQ {
         static let error               = Color(hex: "#EF4444")
         static let info                = Color(hex: "#3B82F6")
 
+        // Signal — single restrained action/active accent (Rebuild direction:
+        // dark-only, high-contrast, no purple/pink/neon).
+        static let signal              = Color(hex: "#4D8DFF")
+        static let signalMuted         = Color(hex: "#4D8DFF").opacity(0.45)
+        static let signalSubtle        = Color(hex: "#4D8DFF").opacity(0.14)
+
+        // Danger — named per the Rebuild token set (shares the status red).
+        static let danger              = Color(hex: "#EF4444")
+
+        // Monochrome ramp — dark-first, high contrast. Foundation of the Rebuild
+        // surfaces so the UI reads calm and neutral rather than tinted.
+        static let mono0               = Color(hex: "#000000")
+        static let mono50              = Color(hex: "#0A0A0C")
+        static let mono100             = Color(hex: "#131317")
+        static let mono200             = Color(hex: "#1C1C22")
+        static let mono300             = Color(hex: "#26262E")
+        static let mono400             = Color(hex: "#33333D")
+        static let mono500             = Color(hex: "#4A4A57")
+        static let mono600             = Color(hex: "#6B6B7A")
+        static let mono700             = Color(hex: "#9494A2")
+        static let mono800             = Color(hex: "#C4C4CE")
+        static let mono900             = Color(hex: "#F4F4F6")
+
         // Trust Tiers
         static let trustBronze         = Color(hex: "#CD7F32")
         static let trustSilver         = Color(hex: "#C0C0C0")
@@ -80,6 +103,12 @@ enum DQ {
         static func statLabel() -> Font { .system(size: 11, weight: .medium, design: .default) }
         static func settingTitle() -> Font { .system(size: 16, weight: .medium, design: .default) }
         static func sectionLabel() -> Font { .system(size: 13, weight: .semibold, design: .default) }
+
+        /// Monospaced scale for numerics (compatibility %, distance, timers, counts).
+        /// Keeps figures tabular and calm in the Rebuild surfaces.
+        static func mono(_ size: CGFloat, weight: Font.Weight = .semibold) -> Font {
+            .system(size: size, weight: weight, design: .monospaced)
+        }
     }
 
     // MARK: - Spacing

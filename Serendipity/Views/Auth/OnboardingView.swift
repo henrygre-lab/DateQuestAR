@@ -106,13 +106,15 @@ struct OnboardingView: View {
             Button {
                 authViewModel.currentUser = UserProfile(
                     uid: "dev_bypass",
-                    displayName: "Dev User",
+                    displayName: "Alex Rivera",
                     age: 25,
-                    bio: "Developer bypass account",
+                    bio: "Product engineer, trail runner, and serial coffee-shop hopper. Here to meet people the analog way.",
                     photoURLs: [],
-                    selfDescriptors: ["developer"],
+                    selfDescriptors: ["adventurous", "curious", "grounded"],
                     verificationStatus: .verified,
                     trustLevel: .gold,
+                    verifiedAge: 25,
+                    verificationCompletedAt: Date(),
                     preferences: MatchPreferences(
                         ageRange: 21...35,
                         maxDistanceMiles: 0.25,
@@ -130,11 +132,16 @@ struct OnboardingView: View {
                         locationSharingMode: .anonymized,
                         showInCommunityEvents: true
                     ),
-                    gamification: GamificationProfile(),
+                    gamification: GamificationProfile(totalXP: 640, level: 3,
+                                                       lastLoginDate: Date(), currentStreakDays: 4),
                     isProfileComplete: true,
                     trustScore: 0.9,
                     createdAt: Date(),
-                    lastActive: Date()
+                    lastActive: Date(),
+                    gender: .male,
+                    accountStatus: .active,
+                    intentVibes: ["adventurous", "genuine", "spontaneous"],
+                    socialContextPreference: true
                 )
                 authViewModel.appState = .authenticated
             } label: {

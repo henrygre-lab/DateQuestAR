@@ -3,40 +3,39 @@
 .AppleDouble
 .LSOverride
 
-# Xcode
+# Xcode build artifacts
 xcuserdata/
 *.xcuserstate
 *.xcscmblueprint
-*.xcodeproj/project.xcworkspace/
-*.xcodeproj/xcuserdata/
 DerivedData/
+build/
 *.hmap
 *.ipa
 *.dSYM.zip
 *.dSYM
+*.xcworkspace/xcuserdata/
+*.xccheckout
+*.xcuserdatad/
 
-# Firebase / build artifacts - SECURITY: Never commit secrets
+# SECURITY: Never commit Firebase credentials (Vibe Coding Security Checklist)
 GoogleService-Info.plist
+google-services.json
 *.plist.bak
+
+# Environment / secrets
+*.env
+*.env.local
+*.env.production
+
+# Swift Package Manager
+.build/
+*.resolved
 
 # Logs and temp
 *.log
 *.tmp
 
-# Swift Package Manager
-.build/
-
-# === SECURITY: Never commit secrets (Vibe Coding Security Checklist) ===
-GoogleService-Info.plist
-google-services.json
-*.env*
-Serendipity/Serendipity_old/
-
-# === Xcode / Build artifacts ===
-DerivedData/
-*.xcuserdatad/
-*.xccheckout
-*.xcworkspace/xcuserdata/
-build/
-.DS_Store
-
+# Cloud Functions
+functions/node_modules/
+functions/lib/
+functions/.runtimeconfig.json

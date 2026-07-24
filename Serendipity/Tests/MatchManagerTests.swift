@@ -1,5 +1,5 @@
 import XCTest
-@testable import DateQuestAR
+@testable import Serendipity
 
 final class MatchManagerTests: XCTestCase {
     var matchManager: MatchManager!

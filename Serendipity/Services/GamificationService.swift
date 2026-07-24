@@ -114,7 +114,7 @@ final class GamificationService: ObservableObject {
         remoteConfig.configSettings = settings
 
         Task {
-            try? await remoteConfig.fetchAndActivate()
+            _ = try? await remoteConfig.fetchAndActivate()
             await MainActor.run {
                 self.refreshMultiplier()
             }
@@ -156,7 +156,7 @@ final class GamificationService: ObservableObject {
 
         do {
             let docRef = db.collection("users").document(uid)
-            try await db.runTransaction { transaction, errorPointer -> Any? in
+            _ = try await db.runTransaction { transaction, errorPointer -> Any? in
                 let snapshot: DocumentSnapshot
                 do {
                     snapshot = try transaction.getDocument(docRef)

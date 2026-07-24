@@ -23,7 +23,6 @@ struct HomeRadarPreview: View {
 
             GeometryReader { geo in
                 let size = min(geo.size.width, geo.size.height)
-                let center = size / 2
                 let maxRingRadius = size * 0.45
 
                 ZStack {
@@ -89,7 +88,7 @@ struct HomeRadarPreview: View {
                 )
         )
         .onAppear { startAnimations() }
-        .onChange(of: isActive) { _ in startAnimations() }
+        .onChange(of: isActive) { _, _ in startAnimations() }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Radar showing \(nearbyCount) nearby potential matches")
     }

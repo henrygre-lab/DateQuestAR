@@ -69,6 +69,11 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
     // MARK: - Google Sign-In URL Handling
 
+    // NOTE: `OpenURLOptionsKey` is deprecated in iOS 26. Migrating off it requires
+    // moving URL handling into a UIWindowSceneDelegate (`scene(_:openURLContexts:)`)
+    // or SwiftUI `.onOpenURL`, which is a scene-lifecycle change on the auth-critical
+    // Google Sign-In path. Deferred intentionally to avoid an untested regression;
+    // the cold-launch case is already covered by `configurationForConnecting` below.
     func application(_ app: UIApplication,
                      open url: URL,
                      options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
