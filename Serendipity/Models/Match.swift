@@ -44,31 +44,3 @@ struct ScoreBreakdown: Codable, Equatable {
     }
 }
 
-// MARK: - Proximity Event
-
-struct ProximityEvent {
-    var matchID: String
-    var partnerUID: String
-    var distanceMiles: Double
-    var hapticIntensity: Float          // 0.0–1.0, ramps with closeness
-    var shouldRevealPhotos: Bool        // true when < 0.1 miles
-    var timestamp: Date
-}
-
-// MARK: - Icebreaker
-
-struct IcebreakerChallenge: Identifiable, Codable {
-    var id: String
-    var type: ChallengeType
-    var prompt: String
-    var options: [String]?              // For trivia
-    var correctAnswer: String?
-    var durationSeconds: Int
-
-    enum ChallengeType: String, Codable {
-        case trivia
-        case gesture
-        case arObject                   // Place same AR object
-        case wordAssociation
-    }
-}
