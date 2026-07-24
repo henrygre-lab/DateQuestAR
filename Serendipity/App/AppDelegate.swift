@@ -93,14 +93,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         
         return configuration
     }
-
-    // MARK: - Background Modes
-
-    private func configureBackgroundModes() {
-        // Background location is handled in LocationService
-        // Bluetooth background scanning configured in ProximityService
-        print("[AppDelegate] Background modes configured.")
-    }
 }
 
 // MARK: - Notification Names
