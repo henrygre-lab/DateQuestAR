@@ -15,7 +15,7 @@ Most dating apps are catalogs. Serendipity is a compass — a proximity-first iO
 | **Asymmetric Alert Caps** | Gender-aware daily caps (women: 10, non-binary: 20, men: 40) enforced client-side via `AlertCapManager`. Firestore Security Rules are the authoritative gate. |
 | **Real-Time Gender Balance** | `BalanceEnforcer` listens to a live Firestore ratio document (written by Cloud Functions). When male% exceeds 55%, male match visibility is probabilistically throttled to protect marketplace balance. |
 | **Trust Tier System** | Bronze → Silver → Gold → Platinum progression based on identity verification depth and post-meet accuracy ratings. |
-| **XP Gamification** | XP, level progression, and badges earned for quests, icebreakers completed, and confirmed connections. |
+| **XP Gamification** | XP and level progression earned for icebreakers completed, NameDrops, and daily logins (`XPManager`). Badge definitions live in `GamificationService`; `GamificationProfile` stores XP, level, and login streak only. |
 
 ---
 
@@ -95,7 +95,8 @@ MVVM with `ObservableObject` services. All business logic lives in Managers and 
 | Layer | Technology |
 |---|---|
 | Language | Swift 5 |
-| UI | SwiftUI — dark mode enforced, custom `DesignSystem` tokens |
+| UI | SwiftUI — dark mode enforced. Two token layers mid-migration: `DQDesignSystem.swift` (v2, current) and `DesignSystem.swift` (v1, legacy). See [Design System](#design-system). |
+| Typography | Plus Jakarta Sans + IBM Plex Mono, bundled (SIL OFL 1.1) |
 | Architecture | MVVM + `ObservableObject` services |
 | Backend | Firebase Auth + Cloud Firestore |
 | Location | CoreLocation, geohash (precision 7, native implementation) |
@@ -113,7 +114,8 @@ MVVM with `ObservableObject` services. All business logic lives in Managers and 
 ## Requirements & Setup
 
 **Requirements**
-- iOS 17+, Xcode 16+
+- Xcode 16+ (the project uses file-system synchronized groups)
+- iOS 26.2+ — this is the `IPHONEOS_DEPLOYMENT_TARGET` currently set in the project
 - Physical device required — location services, haptics, and NearbyInteraction do not work in Simulator
 - "Always On" location permission required for Quest Mode background scanning
 - Firebase project with Auth and Firestore enabled
@@ -136,6 +138,7 @@ These are design constraints, not afterthoughts. Each decision maps to a specifi
 - Raw coordinates are never stored. All location data is encoded as a precision-7 geohash (~150 m cell) before any Firestore write.
 - Three sharing modes: `precise` (opt-in only), `anonymized` (default), `hidden`.
 - Configurable geofence auto-pause zones keep Quest Mode off at home and work.
+- **No place is ever named in the UI.** Outside an active encounter, the count of nearby signals is the only spatial fact displayed — never a neighbourhood, city, venue or landmark. Storing coordinates safely is worth nothing if a screen prints the neighbourhood back out, and ambient screens are the most screenshotted. Enforced as a design rule in [`docs/DESIGN_SYSTEM.md`](docs/DESIGN_SYSTEM.md) §8.
 
 **Identity Verification & Liveness**
 - Onboarding requires a liveness check powered by the Vision framework. The camera prompts two randomly selected actions (turn left, turn right, blink, smile) and confirms completion across ≥ 3 consecutive frames before marking the user verified.
@@ -167,12 +170,45 @@ These are design constraints, not afterthoughts. Each decision maps to a specifi
 
 ---
 
+## Design System
+
+The UI is mid-migration between two token layers. **New work should target v2.**
+
+| | v1 (legacy) | v2 (current) |
+|---|---|---|
+| File | `Utilities/DesignSystem.swift` | `Utilities/DQDesignSystem.swift` |
+| Entry point | `enum DQ` — `DQ.Colors.accent` | `@Environment(\.dq)`, `DQRadius` / `DQSpace` / `DQSize`, `DQFont` |
+| Accent | Purple `#A855F7` | Ember `#F2683C` |
+| Theme | Dark only | Dual-theme (currently pinned dark) |
+
+The names are close enough to be a trap: check which system a view already reads and stay in it. Never mix them in one view. Both files carry a header saying so.
+
+- **The spec** — [`docs/DESIGN_SYSTEM.md`](docs/DESIGN_SYSTEM.md). Source of truth for tokens, components, motion and screen composition. This repo copy is canonical: rulings are written into it by whoever implements them. The spec wins on values.
+- **What's actually built** — [`docs/UI_REWORK_STATUS.md`](docs/UI_REWORK_STATUS.md). Migration status, deferred items and why, deliberate departures from the mocks.
+
+**27 of 46 view files are on v2.** All six handoff surfaces (`EncounterView`, `IcebreakerView`, `HomeView`, `TrustCenterView`, `SafetySheetView`, `ConnectedChatView`), the Settings tree (`SettingsView`, `AddPauseZoneView`, `ReportUserView`, `DataRightsView`) and the Onboarding tree (`ProfileSetupView` + all seven step views), plus the components they own.
+
+Component layers live in `Views/Components`: `DQEncounterParts`, `DQIcebreakerParts`, `DQHomeParts` for the encounter flow, and `DQFormParts` for forms, auth and system chrome — rows, groups, fields, toggles, steppers, sliders, segmented pickers, top bars, step dots, empty states, skeletons, confirm sheets and the blocking-save overlay.
+
+Still on v1 — **17 files**: `RootView`, `RadarView`, `StatsView`, `SplashView`, `OnboardingView`, `LivenessCheckView`, `WaitlistView`, `NameDropInstructionView`, `PostMeetRatingView`, and eight v1 components (`ChipToggle`, `DQBackground`, `DQButtonStyles`, `DQCardModifier`, `FlowLayout`, `OAuthButton`, `StatBadge`, `TrustBadgeView`). `enum DQ` cannot be deleted until they all move.
+
+Fonts are bundled in `Serendipity/Resources/Fonts` and registered via `UIAppFonts` — no setup step required.
+
+---
+
 ## Known Limitations / Current Scope
 
 These are deliberate next steps, not gaps — the core proximity-reveal-AR loop is fully implemented.
 
 | Area | Current State | Next Step |
 |---|---|---|
+| UI rework | 27 of 46 view files on v2 — all 6 handoff surfaces plus the Settings and Onboarding trees | Migrate the 17 remaining v1 files, delete `enum DQ`, then drop the theme pin and go `colorScheme`-driven |
+| Messaging | `ConnectedChatView` is built but there is **no `Message` model, collection, or send path** | Design messaging; then wire the view and restore the stage-4 `Say hello` CTA |
+| Safety actions | *End encounter* and *Report* work; *Share live location* and *Check in later* have no backing feature and ship visibly unavailable | Build a live-location link service and a check-in scheduler |
+| Trust centre entry | `TrustCenterView` is built but unreachable. The Verification row in `SettingsView` currently pushes a "Verification coming soon" empty state | Swap that placeholder destination for `TrustCenterView` |
+| Quest content model | Quest Mode is a `Bool`; no quest title, description, or `n / m` progress exists | Define a quest model so the QuestCard can carry real quest content |
+| Dynamic Type | Neither design system scales with Dynamic Type | Audit both layers and adopt scaled fonts |
+| Runtime verification | Builds clean for the iOS 26.2 simulator; **no v2 surface has been run**, on device or in Simulator | Reaching an encounter needs Firebase auth — add mock fixtures and SwiftUI previews |
 | ProximityService wiring | UWB/BLE service implemented; not yet connected to MatchManager trigger path | Wire `ProximityService` events into `MatchManager.handleNearbyEvent` |
 | AI preference alignment | Dimension 4 (preference alignment) uses distance-tolerance check only | Expand with dealbreaker logic and ML model |
 | Apple Sign-In | Stub implemented | Requires paid Apple Developer Program enrollment |

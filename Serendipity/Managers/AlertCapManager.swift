@@ -89,8 +89,11 @@ class AlertCapManager: ObservableObject {
     /// Syncs ONLY alert-related fields to Firestore using updateData.
     /// This is critical for security — never overwrite authoritative fields.
     private func updateAlertFieldsInFirestore(_ profile: UserProfile) async {
-        guard let documentID = profile.id else {
-            print("[AlertCapManager] Cannot sync: profile has no Firestore document ID")
+        // Prefer the Firestore-assigned @DocumentID; fall back to the non-optional
+        // uid, since users are stored at users/{uid} so uid is a valid doc path.
+        let documentID = profile.id ?? profile.uid
+        guard !documentID.isEmpty else {
+            print("[AlertCapManager] Cannot sync alert count: empty document ID (profile.id and uid both unusable)")
             return
         }
 
@@ -103,7 +106,9 @@ class AlertCapManager: ObservableObject {
                     "lastAlertResetDate": Timestamp(date: profile.lastAlertResetDate)
                 ])
         } catch {
-            print("[AlertCapManager] Failed to sync alert count: \(error.localizedDescription)")
+            // Log a short, non-PII doc prefix to aid on-device debugging.
+            let idPrefix = String(documentID.prefix(6))
+            print("[AlertCapManager] Failed to sync alert count for doc \(idPrefix)…: \(error.localizedDescription)")
             // Advisory only — Firestore Security Rules are the real enforcement
         }
     }
@@ -113,12 +118,16 @@ class AlertCapManager: ObservableObject {
     /// Loads the current user's profile from FirestoreService and initializes daily cap state.
     /// Resets the daily counter if the date has rolled over since the last fetch.
     func loadCurrentUserProfile(uid: String) async {
+        guard !uid.isEmpty else {
+            print("[AlertCapManager] Cannot load profile: empty uid")
+            return
+        }
         do {
             guard let profile = try await firestoreService.fetchUser(uid: uid) else {
                 print("[AlertCapManager] No profile found for uid: \(uid)")
                 return
             }
-            
+
             var mutableProfile = profile
             mutableProfile.resetAlertsIfNeeded()
             currentUserProfile = mutableProfile

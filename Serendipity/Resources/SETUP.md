@@ -34,6 +34,19 @@
     <string>bluetooth-peripheral</string>
     <string>remote-notification</string>
 </array>
+
+<!-- Bundled fonts (DesignSystem v2). Files live in Resources/Fonts.
+     PostScript names are mapped in DQFont — IBM Plex Mono's are irregular. -->
+<key>UIAppFonts</key>
+<array>
+    <string>PlusJakartaSans-Regular.ttf</string>
+    <string>PlusJakartaSans-Medium.ttf</string>
+    <string>PlusJakartaSans-SemiBold.ttf</string>
+    <string>PlusJakartaSans-Bold.ttf</string>
+    <string>PlusJakartaSans-ExtraBold.ttf</string>
+    <string>IBMPlexMono-Regular.ttf</string>
+    <string>IBMPlexMono-Medium.ttf</string>
+</array>
 ```
 
 ---
@@ -53,7 +66,7 @@ Add in Xcode → File → Add Package Dependencies:
 
 ## Xcode Project Configuration
 
-1. **Deployment Target**: iOS 17.0
+1. **Deployment Target**: iOS 26.2 (`IPHONEOS_DEPLOYMENT_TARGET` in the project)
 2. **Capabilities** (Signing & Capabilities tab):
    - Background Modes (Location Updates, Uses Bluetooth LE Accessories, Remote Notifications)
    - Push Notifications
@@ -105,6 +118,12 @@ service cloud.firestore {
 
 ## Project Structure
 
+The app target uses **file-system synchronized groups** (Xcode 16+): App, Models,
+ViewModels, Managers, Services, Views, Utilities and Resources/Fonts. Files added
+to those folders on disk join the target automatically — no `.pbxproj` edit. Any
+*other* new top-level folder must be added as a synchronized group explicitly, or
+nothing in it will compile.
+
 ```
 Serendipity/
 ├── App/
@@ -113,13 +132,18 @@ Serendipity/
 │   └── RootView.swift            # Auth state router (loading → unauth → onboarding → home)
 ├── Models/
 │   ├── UserProfile.swift         # User, MatchPreferences, PrivacySettings, trust tier
-│   ├── Match.swift               # Match, ScoreBreakdown, IcebreakerChallenge
+│   ├── Match.swift               # Match, ScoreBreakdown, MatchStatus
+│   ├── IcebreakerChallenge.swift # Challenge types, prompts, options
 │   ├── EncounterSession.swift    # Time-bounded session, RevealStage, progress tracking
+│   ├── GamificationProfile.swift # XP, level, login streak
+│   ├── ProximityEvent.swift      # Proximity event payloads
+│   ├── FirestoreTypes.swift      # Firestore-facing type shims
+│   ├── AppError.swift            # Typed app errors
 │   └── Enums.swift               # Gender, RelationshipType, AccountStatus, etc.
 ├── ViewModels/
 │   └── AuthViewModel.swift       # Auth state, sign in/up, biometrics, app routing
 ├── Managers/
-│   ├── MatchManager.swift        # AI scoring, quest mode, icebreaker dispatch
+│   ├── MatchManager.swift        # AI scoring, quest mode, icebreaker dispatch, DEBUG demo path
 │   ├── AlertCapManager.swift     # Asymmetric daily alert caps (advisory; Firestore rules authoritative)
 │   ├── BalanceEnforcer.swift     # Real-time gender ratio gate + women-first queuing
 │   ├── RevealManager.swift       # EncounterSession state transitions, photo reveal
@@ -131,26 +155,41 @@ Serendipity/
 │   ├── FirestoreService.swift    # All Firestore CRUD, atomic transactions
 │   ├── LocationService.swift     # Background location, geohash encoding, haptics
 │   ├── ProximityService.swift    # NearbyInteraction (UWB) + CoreBluetooth (BLE)
+│   ├── DemoProximityProvider.swift # In-memory walk-up simulation (DEBUG demo)
 │   ├── GamificationService.swift # XP/badge writes, Remote Config multipliers
 │   └── AnalyticsService.swift    # Firebase Analytics (no PII; UIDs SHA256-hashed)
 ├── Views/
-│   ├── Auth/                     # SplashView, OnboardingView
-│   ├── Onboarding/               # ProfileSetupView, LivenessCheckView, WaitlistView
-│   ├── Home/                     # HomeView (Quest Mode toggle, match cards)
-│   ├── Radar/                    # RadarView (proximity HUD)
-│   ├── Icebreaker/               # IcebreakerView, PostMeetRatingView
-│   ├── Settings/                 # SettingsView (privacy, auto-pause zones, account)
-│   ├── Stats/                    # StatsView (XP, level, badges)
-│   └── Components/               # DQTextField, ChipToggle, StatBadge, TrustBadgeView, etc.
+│   ├── Auth/                     # SplashView, OnboardingView                     [v1]
+│   ├── Onboarding/               # ProfileSetupView + steps, LivenessCheck, Waitlist [v1]
+│   ├── Home/                     # HomeView — QuestCard, DemoControl, signals     [v2]
+│   ├── Encounter/                # EncounterView — the reveal ladder (#if DEBUG)  [v2]
+│   ├── Icebreaker/               # IcebreakerView [v2]; NameDrop, PostMeetRating  [v1]
+│   ├── Radar/                    # RadarView, ARViewContainer                     [v1]
+│   ├── Settings/                 # SettingsView, pause zones, data rights, report [v1]
+│   ├── Stats/                    # StatsView                                      [v1]
+│   └── Components/
+│       ├── DQEncounterParts.swift  # [v2] buttons, chips, meters, radar, safety line
+│       ├── DQIcebreakerParts.swift # [v2] partner strip, option rows, chain pills
+│       ├── DQHomeParts.swift       # [v2] QuestCard, DemoControl, SignalCard, tab bar
+│       ├── RevealHero.swift        # [v2] the progressive-reveal photo
+│       ├── StageStepper.swift      # [v2] 4-segment reveal ladder
+│       ├── VibeScoreBreakdown.swift/TierUpgradeBanner.swift  # [v2]
+│       └── …                       # [v1] DQTextField, ChipToggle, StatBadge, TrustBadgeView, etc.
 ├── Utilities/
-│   ├── DesignSystem.swift        # DQ design tokens (colors, type, spacing)
+│   ├── DQDesignSystem.swift      # [v2] DQ tokens — read via @Environment(\.dq)
+│   ├── DesignSystem.swift        # [v1] legacy `enum DQ` tokens — do not mix with v2
 │   ├── ColorExtension.swift      # Hex color init
 │   └── Geohash.swift             # Native geohash encode/decode (precision 7)
-├── Tests/
-│   └── MatchManagerTests.swift   # Unit tests: scoring, thresholds, haptic intensity
+├── SerendipityTests/             # Unit tests
+├── SerendipityUITests/           # UI tests
+├── design/                       # Design handoff bundle (HTML references) — NOT in the target
 └── Resources/
-    └── SETUP.md                  # This file
+    ├── SETUP.md                  # This file
+    └── Fonts/                    # Plus Jakarta Sans + IBM Plex Mono (SIL OFL 1.1) + licences
 ```
+
+> `[v1]` / `[v2]` mark which design-system token layer a view reads. See
+> `docs/UI_REWORK_STATUS.md`. **Never mix the two in one view.**
 
 ---
 
@@ -164,6 +203,8 @@ Debug builds include a "Developer Bypass" button on the login screen that signs 
 
 | Area | What's Needed |
 |---|---|
+| DesignSystem v2 migration | 3 of 6 surfaces migrated; `RadarView`, Settings, Stats and Onboarding still v1 |
+| Connected chat / Trust centre / Safety sheet | Designed in the handoff bundle, not built |
 | Firestore Security Rules | Enforce alert cap atomically server-side |
 | ProximityService wiring | Connect UWB/BLE events to `MatchManager.handleNearbyEvent` |
 | AI preference alignment | Expand dimension 4 with dealbreaker logic and ML model |

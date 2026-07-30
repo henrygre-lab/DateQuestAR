@@ -2,18 +2,23 @@ import SwiftUI
 
 struct VerificationStepView: View {
     @ObservedObject var verifier: SafetyVerifier
+    @Environment(\.dq) private var p
     @State private var showLiveness = false
 
     var body: some View {
-        VStack(spacing: DQ.Spacing.xxl) {
-            Image(systemName: "checkmark.shield.fill")
-                .resizable().scaledToFit()
-                .frame(width: DQ.Sizing.iconSmall)
-                .foregroundStyle(DQ.Colors.accent)
+        VStack(spacing: DQSpace.gutter) {
+            // Leading glyphs stay reserved for trust, live and verify states —
+            // this is one of them.
+            Image(systemName: "checkmark.shield")
+                .font(.system(size: 34, weight: .light))
+                .foregroundStyle(p.verify)
                 .accessibilityLabel("Verification shield")
+
             Text("We verify every user with a selfie and ID to keep Serendipity safe for everyone.")
+                .font(DQFont.body)
+                .foregroundStyle(p.text2)
                 .multilineTextAlignment(.center)
-                .foregroundStyle(DQ.Colors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             switch verifier.verificationState {
             case .idle:
@@ -21,39 +26,45 @@ struct VerificationStepView: View {
                     verifier.beginVerification()
                     showLiveness = true
                 }
-                .buttonStyle(.dqPrimary)
+                .buttonStyle(.dqNeutral)
 
             case .livenessCheck:
-                Button("Start Liveness Check") {
-                    showLiveness = true
-                }
-                .buttonStyle(.dqPrimary)
+                Button("Start Liveness Check") { showLiveness = true }
+                    .buttonStyle(.dqNeutral)
 
             case .capturingID:
-                Label("Selfie Verified", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(DQ.Colors.success)
+                verifiedLine("Selfie verified")
                 Text("Now scan your ID (driver's license or passport).")
-                    .foregroundStyle(DQ.Colors.textSecondary)
+                    .font(DQFont.bodyS)
+                    .foregroundStyle(p.text2)
                     .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
 
             case .verified:
-                VStack(spacing: DQ.Spacing.md) {
-                    Label("Identity Verified", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(DQ.Colors.success)
-                        .accessibilityLabel("Identity verified successfully")
-                    TrustBadgeView(trustLevel: verifier.achievedTrustLevel, size: .medium)
+                VStack(spacing: DQSpace.tight) {
+                    verifiedLine("Identity verified")
+                    TrustChip(tier: verifier.achievedTrustLevel)
                 }
 
             case .failed(let msg):
-                Text(msg).foregroundStyle(DQ.Colors.error).multilineTextAlignment(.center)
+                Text(msg)
+                    .font(DQFont.bodyS)
+                    .foregroundStyle(p.danger)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
                 Button("Try Again") {
                     verifier.beginVerification()
                     showLiveness = true
                 }
-                .buttonStyle(.dqSecondary)
+                .buttonStyle(.dqGhost)
 
             default:
-                ProgressView("Verifying...").tint(DQ.Colors.accent)
+                HStack(spacing: DQSpace.tight) {
+                    ProgressView().tint(p.text2)
+                    Text("Verifying…")
+                        .font(DQFont.bodyS)
+                        .foregroundStyle(p.text2)
+                }
             }
         }
         .fullScreenCover(isPresented: $showLiveness) {
@@ -64,5 +75,20 @@ struct VerificationStepView: View {
                 }
             }
         }
+    }
+
+    private func verifiedLine(_ text: String) -> some View {
+        HStack(spacing: DQSpace.tight) {
+            Image(systemName: "checkmark")
+                .font(.system(size: 10, weight: .heavy))
+                .foregroundStyle(.white)
+                .frame(width: 20, height: 20)
+                .background(Circle().fill(p.verify))
+            Text(text)
+                .font(DQFont.uiSized(13, .semibold))
+                .foregroundStyle(p.text)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(text)
     }
 }

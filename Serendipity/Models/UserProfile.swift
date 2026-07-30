@@ -68,25 +68,40 @@ struct UserProfile: Identifiable, Codable {
         }
     }
 
+    /// Formats a date as a "yyyy-MM-dd" day key in **UTC**.
+    /// UTC is chosen deliberately: the daily-reset boundary stays stable and
+    /// deterministic regardless of the device's timezone (and lines up with
+    /// server-side day bucketing). This also makes rollovers testable — callers
+    /// can pass a fixed `Date` to force a day change.
+    static func dayKey(for date: Date) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC") ?? .current
+        let c = calendar.dateComponents([.year, .month, .day], from: date)
+        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+    }
+
     /// Returns true if the user hasn't hit their daily alert cap.
-    /// Automatically resets the counter if the date has rolled over.
-    mutating func canSendAlert() -> Bool {
-        resetAlertsIfNeeded()
+    /// Automatically resets the counter if the UTC day has rolled over.
+    /// Pass `now` to test deterministically.
+    mutating func canSendAlert(using now: Date = Date()) -> Bool {
+        resetAlertsIfNeeded(using: now)
         return alertsSentToday < currentDailyLimit
     }
 
-    /// Resets `alertsSentToday` to 0 when the calendar day changes.
-    mutating func resetAlertsIfNeeded() {
-        if !Calendar.current.isDateInToday(lastAlertResetDate) {
+    /// Resets `alertsSentToday` to 0 when the UTC calendar day changes.
+    /// Compares the day key of `now` against the last reset's day key, so it
+    /// only resets on an actual day rollover (timezone-safe, testable).
+    mutating func resetAlertsIfNeeded(using now: Date = Date()) {
+        if Self.dayKey(for: now) != Self.dayKey(for: lastAlertResetDate) {
             alertsSentToday = 0
-            lastAlertResetDate = Date()
+            lastAlertResetDate = now
         }
     }
 
     /// Increments the daily alert counter by 1.
-    /// Call only after `canSendAlert()` returns true.
-    mutating func incrementAlertCount() {
-        resetAlertsIfNeeded()
+    /// Call only after `canSendAlert()` returns true. Pass `now` to test deterministically.
+    mutating func incrementAlertCount(using now: Date = Date()) {
+        resetAlertsIfNeeded(using: now)
         alertsSentToday += 1
     }
 

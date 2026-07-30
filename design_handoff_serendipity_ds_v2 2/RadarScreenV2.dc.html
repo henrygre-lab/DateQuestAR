@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--dq-bg:#101113;--dq-surface:#1A1B1E;--dq-surface-2:#24262A;--dq-text:#F6F7F8;--dq-text-2:#9BA0A8;--dq-text-3:#6A6F77;--dq-line:rgba(255,255,255,.09);--dq-line-strong:rgba(255,255,255,.18);--dq-track:rgba(255,255,255,.12);--dq-ember:#F2683C;--dq-ember-soft:rgba(242,104,60,.16);--dq-ember-line:rgba(242,104,60,.38);--dq-ember-text:#FF8A5F;--dq-ember-glow:rgba(242,104,60,.32);--dq-verify:#2E9BF0;--dq-live:#4ADE80;--dq-danger:#E5484D;--dq-cta:#FFFFFF;--dq-cta-text:#15161A;--dq-gold:#E8B44A;--dq-scrim-heavy:rgba(10,11,13,.72);--dq-shadow:0 22px 48px rgba(0,0,0,.5);--dq-shadow-sm:0 8px 22px rgba(0,0,0,.34)}
+@keyframes dqPulse{0%{transform:scale(.18);opacity:.55}70%{opacity:0}100%{transform:scale(1);opacity:0}}
+@keyframes dqBlip{0%,100%{opacity:.85}50%{opacity:1}}
+</style>
+</helmet>
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" dark="{{ isDark }}" width="{{ frameW }}" height="{{ frameH }}" hint-size="393px,852px">
+<div style="height:100%;box-sizing:border-box;display:flex;flex-direction:column;background:var(--dq-bg);color:var(--dq-text);font-family:'Plus Jakarta Sans',system-ui,sans-serif;overflow:hidden">
+
+  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:56px 16px 0;flex-shrink:0">
+    <div style="display:flex;flex-direction:column;gap:5px">
+      <span style="font:800 21px/1 'Plus Jakarta Sans';letter-spacing:-.025em;color:var(--dq-text)">Nearby</span>
+      <div style="display:flex;align-items:center;gap:7px">
+        <span style="width:6px;height:6px;border-radius:50%;background:var(--dq-live)"></span>
+        <span style="font:500 12px/1 'IBM Plex Mono';color:var(--dq-text-2)">4 signals · live</span>
+      </div>
+    </div>
+    <div style="width:34px;height:34px;border-radius:50%;background:var(--dq-surface-2);display:flex;align-items:center;justify-content:center;font:600 13px/1 'Plus Jakarta Sans';color:var(--dq-text-2);flex-shrink:0">⋯</div>
+  </div>
+
+  <div style="flex:1;display:flex;align-items:center;justify-content:center;padding:0 16px;min-height:0">
+    <div style="position:relative;width:100%;aspect-ratio:1;max-height:100%">
+
+      <div style="position:absolute;inset:0;border-radius:50%;border:1px solid var(--dq-line)"></div>
+      <div style="position:absolute;inset:33px;border-radius:50%;border:1px solid var(--dq-line)"></div>
+      <div style="position:absolute;inset:112px;border-radius:50%;border:1px solid var(--dq-line-strong)"></div>
+
+      <div style="position:absolute;inset:112px;border-radius:50%;border:1px solid var(--dq-ember-line);animation:dqPulse 3.4s cubic-bezier(.22,.61,.36,1) infinite"></div>
+      <div style="position:absolute;inset:112px;border-radius:50%;border:1px solid var(--dq-ember-line);animation:dqPulse 3.4s cubic-bezier(.22,.61,.36,1) infinite 1.7s"></div>
+
+      <span style="position:absolute;top:-1px;left:50%;transform:translate(-50%,-50%);padding:0 7px;background:var(--dq-bg);font:500 9.5px/1 'IBM Plex Mono';color:var(--dq-text-3)">250 m</span>
+      <span style="position:absolute;top:32px;left:50%;transform:translate(-50%,-50%);padding:0 7px;background:var(--dq-bg);font:500 9.5px/1 'IBM Plex Mono';color:var(--dq-text-3)">120 m</span>
+      <span style="position:absolute;top:111px;left:50%;transform:translate(-50%,-50%);padding:0 7px;background:var(--dq-bg);font:500 9.5px/1 'IBM Plex Mono';color:var(--dq-ember-text)">50 m</span>
+
+      <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:13px;height:13px;border-radius:50%;background:var(--dq-ember);box-shadow:0 0 0 5px var(--dq-ember-soft)"></div>
+
+      <div style="position:absolute;top:calc(50% - 18px);left:calc(50% - 49px);transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:5px;animation:dqBlip 2.6s ease-in-out infinite">
+        <span style="width:15px;height:15px;border-radius:50%;background:var(--dq-ember);box-shadow:0 0 14px var(--dq-ember-glow)"></span>
+        <span style="font:500 10px/1 'IBM Plex Mono';color:var(--dq-ember-text)">40 m</span>
+      </div>
+      <div style="position:absolute;top:calc(50% + 44px);left:calc(50% + 52px);transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:5px;animation:dqBlip 3.1s ease-in-out infinite .4s">
+        <span style="width:11px;height:11px;border-radius:50%;background:var(--dq-text-2)"></span>
+        <span style="font:500 10px/1 'IBM Plex Mono';color:var(--dq-text-3)">95 m</span>
+      </div>
+      <div style="position:absolute;top:calc(50% + 77px);left:calc(50% - 65px);transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:5px;animation:dqBlip 2.9s ease-in-out infinite .9s">
+        <span style="width:11px;height:11px;border-radius:50%;background:var(--dq-text-2)"></span>
+        <span style="font:500 10px/1 'IBM Plex Mono';color:var(--dq-text-3)">140 m</span>
+      </div>
+      <div style="position:absolute;top:calc(50% - 131px);left:calc(50% + 76px);transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:5px;animation:dqBlip 3.4s ease-in-out infinite 1.3s">
+        <span style="width:9px;height:9px;border-radius:50%;background:var(--dq-text-3)"></span>
+        <span style="font:500 10px/1 'IBM Plex Mono';color:var(--dq-text-3)">210 m</span>
+      </div>
+
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:11px;padding:8px 16px 26px;flex-shrink:0">
+    <span style="text-align:center;font:500 11px/1.45 'Plus Jakarta Sans';color:var(--dq-text-3)">Direction isn't shown — only how close. Blips sit on their distance ring.</span>
+    <div style="display:flex;align-items:center;gap:13px;padding:13px 15px;border-radius:24px;background:var(--dq-surface);border:1px solid var(--dq-ember-line)">
+      <div style="width:50px;height:50px;border-radius:16px;background:var(--dq-surface-2);filter:blur(7px);flex-shrink:0"></div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:4px">
+        <div style="display:flex;align-items:center;gap:7px">
+          <span style="font:500 14px/1 'IBM Plex Mono';color:var(--dq-ember-text)">40 m away</span>
+          <span style="font:700 10px/1 'Plus Jakarta Sans';color:var(--dq-gold)">◆</span>
+        </div>
+        <span style="font:500 11.5px/1.35 'Plus Jakarta Sans';color:var(--dq-text-2)">Inside your radius. Two icebreakers to reveal.</span>
+      </div>
+      <div style="height:40px;padding:0 17px;border-radius:999px;background:var(--dq-cta);display:flex;align-items:center;justify-content:center;font:700 12.5px/1 'Plus Jakarta Sans';color:var(--dq-cta-text);flex-shrink:0">Start</div>
+    </div>
+  </div>
+
+</div>
+</x-import>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:393,&quot;height&quot;:852},&quot;mode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    return { isDark: (this.props.mode ?? 'dark') === 'dark', frameW: 393, frameH: 852 };
+  }
+}
+</script>
+</body>
+</html>

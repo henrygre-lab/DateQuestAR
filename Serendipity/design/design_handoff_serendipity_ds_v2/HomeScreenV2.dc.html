@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<script src="./image-slot.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--dq-bg:#101113;--dq-surface:#1A1B1E;--dq-surface-2:#24262A;--dq-text:#F6F7F8;--dq-text-2:#9BA0A8;--dq-text-3:#6A6F77;--dq-line:rgba(255,255,255,.09);--dq-line-strong:rgba(255,255,255,.18);--dq-track:rgba(255,255,255,.12);--dq-ember:#F2683C;--dq-ember-soft:rgba(242,104,60,.16);--dq-ember-line:rgba(242,104,60,.38);--dq-ember-text:#FF8A5F;--dq-ember-glow:rgba(242,104,60,.32);--dq-verify:#2E9BF0;--dq-live:#4ADE80;--dq-live-text:#4ADE80;--dq-danger:#E5484D;--dq-cta:#FFFFFF;--dq-cta-text:#15161A;--dq-nav:rgba(36,38,42,.94);--dq-nav-ink:#8B9098;--dq-nav-active:#FFFFFF;--dq-nav-active-ink:#15161A;--dq-bronze:#C08457;--dq-silver:#B9C0CA;--dq-gold:#E8B44A;--dq-platinum-ink:#D9E6F2;--dq-platinum-fill:rgba(217,230,242,.14);--dq-demo-bg:rgba(255,255,255,.03);--dq-demo-line:rgba(255,255,255,.22);--dq-demo-chip:rgba(255,255,255,.12);--dq-demo-ink:#C9CED6;--dq-shadow:0 22px 48px rgba(0,0,0,.5);--dq-shadow-sm:0 8px 22px rgba(0,0,0,.34)}
+@keyframes dqLive{0%,100%{opacity:1}50%{opacity:.28}}
+@keyframes dqSweep{0%{transform:translateX(-100%)}100%{transform:translateX(300%)}}
+@keyframes dqRadar{0%{transform:scale(.6);opacity:.6}100%{transform:scale(2.5);opacity:0}}
+</style>
+</helmet>
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" dark="{{ isDark }}" width="{{ frameW }}" height="{{ frameH }}" hint-size="393px,852px">
+<div style="height:100%;box-sizing:border-box;display:flex;flex-direction:column;background:var(--dq-bg);color:var(--dq-text);font-family:'Plus Jakarta Sans',system-ui,sans-serif;overflow:hidden">
+
+  <div style="flex:1;display:flex;flex-direction:column;gap:16px;padding:58px 16px 0;overflow:hidden">
+
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <span style="font:800 25px/1 'Plus Jakarta Sans';letter-spacing:-.03em;color:var(--dq-text)">Evening, Alex</span>
+        <span style="font:600 11px/1 'Plus Jakarta Sans';letter-spacing:.14em;text-transform:uppercase;color:var(--dq-text-2)">Mission district · 6 signals near</span>
+      </div>
+      <div style="width:44px;height:44px;border-radius:50%;border:2px solid var(--dq-ember);background:var(--dq-surface-2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font:700 15px/1 'Plus Jakarta Sans';color:var(--dq-text-2)">A</div>
+    </div>
+
+    <!-- QUEST CARD -->
+    <div style="position:relative;display:flex;flex-direction:column;gap:14px;padding:18px;border-radius:28px;background:var(--dq-surface);border:1px solid var(--dq-ember-line);box-shadow:var(--dq-shadow);overflow:hidden">
+      <div style="position:absolute;top:0;left:0;right:0;height:3px;background:var(--dq-track);overflow:hidden">
+        <div style="position:absolute;top:0;bottom:0;width:34%;background:var(--dq-ember);animation:dqSweep 2.8s ease-in-out infinite"></div>
+      </div>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+        <div style="display:flex;flex-direction:column;gap:6px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="width:8px;height:8px;border-radius:50%;background:var(--dq-live);animation:dqLive 2s ease-in-out infinite"></span>
+            <span style="font:700 10px/1 'Plus Jakarta Sans';letter-spacing:.18em;text-transform:uppercase;color:var(--dq-live-text)">Quest mode active</span>
+          </div>
+          <span style="font:800 20px/1.15 'Plus Jakarta Sans';letter-spacing:-.02em;color:var(--dq-text)">Two strangers, one shared song</span>
+          <span style="font:500 12.5px/1.5 'Plus Jakarta Sans';color:var(--dq-text-2);max-width:250px">Stay within 100 m of someone who shares a top artist to open an encounter.</span>
+        </div>
+        <div style="position:relative;width:52px;height:52px;flex-shrink:0;display:flex;align-items:center;justify-content:center">
+          <span style="position:absolute;width:20px;height:20px;border-radius:50%;border:1.5px solid var(--dq-ember);animation:dqRadar 2.6s ease-out infinite"></span>
+          <span style="position:absolute;width:20px;height:20px;border-radius:50%;border:1.5px solid var(--dq-ember);animation:dqRadar 2.6s ease-out infinite 1.3s"></span>
+          <span style="width:10px;height:10px;border-radius:50%;background:var(--dq-ember);box-shadow:0 0 12px var(--dq-ember-glow)"></span>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="flex:1;height:6px;border-radius:999px;background:var(--dq-track);overflow:hidden"><div style="height:100%;width:62%;border-radius:999px;background:var(--dq-ember)"></div></div>
+        <span style="font:700 11px/1 'Plus Jakarta Sans';color:var(--dq-ember-text)">2 / 3 quests</span>
+      </div>
+      <div style="display:flex;gap:8px">
+        <span style="padding:8px 13px;border-radius:999px;background:var(--dq-surface-2);border:1px solid var(--dq-line);font:600 11px/1 'Plus Jakarta Sans';color:var(--dq-text)">Within 100 m</span>
+        <span style="padding:8px 13px;border-radius:999px;background:var(--dq-surface-2);border:1px solid var(--dq-line);font:600 11px/1 'Plus Jakarta Sans';color:var(--dq-text)">Ends 11:00 PM</span>
+      </div>
+    </div>
+
+    <!-- DEMO CONTROL -->
+    <div style="display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:22px;background:var(--dq-demo-bg);border:1px dashed var(--dq-demo-line)">
+      <div style="display:flex;align-items:center;gap:9px">
+        <span style="padding:5px 9px;border-radius:7px;background:var(--dq-demo-chip);font:700 9px/1 'IBM Plex Mono';letter-spacing:.14em;color:var(--dq-demo-ink)">DEBUG</span>
+        <span style="font:600 11px/1 'Plus Jakarta Sans';letter-spacing:.04em;color:var(--dq-text-2)">Developer bypass · not shipped</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px">
+        <button style="flex:1;height:44px;border:1px solid var(--dq-demo-line);border-radius:999px;background:transparent;color:var(--dq-text);font:700 13px/1 'Plus Jakarta Sans';cursor:pointer">Simulate encounter</button>
+        <div style="width:44px;height:44px;border-radius:50%;border:1px solid var(--dq-demo-line);display:flex;align-items:center;justify-content:center;font:600 15px/1 'Plus Jakarta Sans';color:var(--dq-text-2)">⟳</div>
+      </div>
+    </div>
+
+    <!-- NEARBY -->
+    <div style="display:flex;flex-direction:column;gap:11px;flex:1;min-height:0">
+      <div style="display:flex;align-items:baseline;justify-content:space-between">
+        <span style="font:700 16px/1 'Plus Jakarta Sans';letter-spacing:-.015em;color:var(--dq-text)">Signals nearby</span>
+        <span style="font:600 11px/1 'Plus Jakarta Sans';color:var(--dq-text-2);text-decoration:underline;text-underline-offset:3px">See all</span>
+      </div>
+      <div style="display:flex;gap:11px">
+        <sc-for list="{{ signals }}" as="sig" hint-placeholder-count="2">
+          <div style="position:relative;flex:1;height:168px;border-radius:24px;overflow:hidden;background:var(--dq-surface-2);border:1px solid var(--dq-line)">
+            <div style="position:absolute;inset:0;transform:scale(1.2);filter:blur({{ sig.blur }})"><image-slot id="{{ sig.slot }}" shape="rect" placeholder=""></image-slot></div>
+            <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(12,13,15,.3) 0%,rgba(12,13,15,0) 40%,rgba(12,13,15,.88) 100%)"></div>
+            <span style="position:absolute;top:10px;left:10px;display:inline-flex;align-items:center;gap:5px;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.16);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid rgba(255,255,255,.22);font:700 9.5px/1 'Plus Jakarta Sans';color:#fff"><span style="color:{{ sig.tierColor }};font-size:9px">◆</span>{{ sig.tier }}</span>
+            <div style="position:absolute;left:11px;right:11px;bottom:11px;display:flex;flex-direction:column;gap:5px">
+              <span style="font:800 14px/1 'Plus Jakarta Sans';letter-spacing:-.01em;color:#fff">{{ sig.dist }}</span>
+              <span style="font:600 10px/1 'Plus Jakarta Sans';color:rgba(255,255,255,.72)">{{ sig.match }}</span>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB BAR -->
+  <div style="display:flex;justify-content:center;padding:10px 16px 22px;flex-shrink:0">
+    <div style="display:flex;align-items:center;gap:5px;padding:8px;border-radius:999px;background:var(--dq-nav);box-shadow:var(--dq-shadow)">
+      <div style="width:56px;height:44px;border-radius:999px;background:var(--dq-nav-active);display:flex;align-items:center;justify-content:center;font:600 17px/1 'Plus Jakarta Sans';color:var(--dq-nav-active-ink)">⌂</div>
+      <div style="width:56px;height:44px;display:flex;align-items:center;justify-content:center;font:600 16px/1 'Plus Jakarta Sans';color:var(--dq-nav-ink)">◎</div>
+      <div style="width:56px;height:44px;display:flex;align-items:center;justify-content:center;font:600 16px/1 'Plus Jakarta Sans';color:var(--dq-nav-ink)">♡</div>
+      <div style="width:56px;height:44px;display:flex;align-items:center;justify-content:center;font:600 16px/1 'Plus Jakarta Sans';color:var(--dq-nav-ink)">◍</div>
+    </div>
+  </div>
+
+</div>
+</x-import>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:393,&quot;height&quot;:852},&quot;mode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      isDark: (this.props.mode ?? 'dark') === 'dark', frameW: 393, frameH: 852,
+      signals: [
+        {slot:'partner-portrait', blur:'22px', tier:'Gold', tierColor:'var(--dq-gold)', dist:'40 m away', match:'88 vibe match'},
+        {slot:'signal-b', blur:'26px', tier:'Silver', tierColor:'var(--dq-silver)', dist:'120 m away', match:'74 vibe match'},
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

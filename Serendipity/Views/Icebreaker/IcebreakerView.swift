@@ -3,13 +3,16 @@ import SwiftUI
 /// Shared AR icebreaker challenge. Supports Trivia (single pick) and Word
 /// Association (a short chain), plus lighter Gesture / AR Object types.
 ///
-/// Visual rebuild: dark-only, high-contrast mono surfaces with a single signal
-/// accent. All challenge logic, the word-chain rounds, the demo completion
-/// hand-off, and the partner reveal thumbnail are unchanged.
+/// DesignSystem v2 skin (docs/DESIGN_SYSTEM.md §5, §6 row 2): top bar →
+/// persistent partner strip → progress row → game card → feedback banner →
+/// CTA. All challenge logic, the word-chain rounds, the timer and the demo
+/// completion hand-off are unchanged; only the presentation moved.
 struct IcebreakerView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var matchManager: MatchManager
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dq) private var p
+    @Environment(\.dqTheme) private var theme
     @ObservedObject private var revealManager = RevealManager.shared
     var challenge: IcebreakerChallenge
 
@@ -22,8 +25,6 @@ struct IcebreakerView: View {
     @State private var timeRemaining: Int
     @State private var timer: Timer?
     @State private var isComplete = false
-    @State private var celebrationScale: CGFloat = 0.5
-    @State private var celebrationOpacity: Double = 0
     @State private var showRating = false
     @State private var showNameDropOverlay = false
 
@@ -31,6 +32,13 @@ struct IcebreakerView: View {
     @State private var round = 1
     @State private var chainPrompt = ""
     private let wordChainRounds = 3
+
+    /// Display-only record of the links played so far, so the chain can be
+    /// drawn as pills. The game itself still advances on `round`/`chainPrompt`.
+    @State private var chainHistory: [String] = []
+
+    @State private var feedback: String?
+    @State private var feedbackKind: FeedbackBanner.Kind = .success
 
     init(challenge: IcebreakerChallenge, isDemo: Bool = false, onFinished: (() -> Void)? = nil) {
         self.challenge = challenge
@@ -41,237 +49,284 @@ struct IcebreakerView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                DQ.Colors.mono0.ignoresSafeArea()
-                VStack(spacing: DQ.Spacing.xl) {
-                    if isDemo { partnerRevealThumb }
-                    timerRing
-                    questionCard
-                    if !isComplete {
-                        if let options = challenge.options {
-                            answersGrid(options: options)
-                        } else {
-                            gestureCard
-                        }
-                    }
-                    if isComplete { completionBanner }
-                }
-                .padding()
-            }
-            .navigationTitle("Icebreaker")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Skip") { dismiss() }
-                        .foregroundStyle(DQ.Colors.mono600)
-                        .accessibilityLabel("Skip icebreaker")
-                }
-            }
-            .onAppear { startTimer() }
-            .onDisappear { timer?.invalidate() }
-            .sheet(isPresented: $showNameDropOverlay) {
-                NameDropInstructionView()
-            }
-        }
-    }
-
-    // MARK: - Timer Ring
-
-    private var timerColor: Color {
-        let fraction = Double(timeRemaining) / Double(challenge.durationSeconds)
-        if fraction > 0.5 { return DQ.Colors.signal }
-        if fraction > 0.25 { return DQ.Colors.warning }
-        return DQ.Colors.danger
-    }
-
-    private var timerRing: some View {
         ZStack {
-            Circle()
-                .stroke(DQ.Colors.mono300, lineWidth: DQ.Sizing.strokeWidthThick)
-                .frame(width: DQ.Sizing.timerRingSize, height: DQ.Sizing.timerRingSize)
-            Circle()
-                .trim(from: 0, to: CGFloat(timeRemaining) / CGFloat(challenge.durationSeconds))
-                .stroke(timerColor, style: StrokeStyle(lineWidth: DQ.Sizing.strokeWidthThick, lineCap: .round))
-                .frame(width: DQ.Sizing.timerRingSize, height: DQ.Sizing.timerRingSize)
-                .rotationEffect(.degrees(-90))
-                .animation(.linear(duration: 1), value: timeRemaining)
-            Text("\(timeRemaining)")
-                .font(DQ.Typography.mono(26, weight: .bold))
-                .foregroundStyle(DQ.Colors.mono900)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(timeRemaining) seconds remaining")
-        .accessibilityAddTraits(.updatesFrequently)
-    }
+            p.bg.ignoresSafeArea()
 
-    // MARK: - Question Card
-
-    private var questionCard: some View {
-        VStack(spacing: DQ.Spacing.xs) {
-            if challenge.type == .wordAssociation {
-                Text("WORD CHAIN · ROUND \(min(round, wordChainRounds))/\(wordChainRounds)")
-                    .font(DQ.Typography.mono(10, weight: .semibold))
-                    .foregroundStyle(DQ.Colors.signal)
-            }
-            Text(displayPrompt)
-                .font(.title3.bold())
-                .foregroundStyle(DQ.Colors.mono900)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(DQ.Spacing.xl)
-        .background(RoundedRectangle(cornerRadius: DQ.Radii.xl).fill(DQ.Colors.mono100))
-        .overlay(RoundedRectangle(cornerRadius: DQ.Radii.xl).stroke(DQ.Colors.mono300, lineWidth: 1))
-        .accessibilityLabel("Prompt: \(displayPrompt)")
-    }
-
-    private var displayPrompt: String {
-        if challenge.type == .wordAssociation {
-            return "\(chainPrompt)  →  ?"
-        }
-        return challenge.prompt
-    }
-
-    // MARK: - Partner Reveal Thumb (demo)
-
-    /// A small avatar that unblurs in real time as the shared reveal progresses,
-    /// making the "progressive unblur during the icebreaker" contract visible
-    /// while the challenge is on screen.
-    private var partnerRevealThumb: some View {
-        let progress = matchManager.nearbyMatch.flatMap { revealManager.activeSessions[$0.id]?.revealProgress } ?? 0.0
-        return HStack(spacing: DQ.Spacing.sm) {
-            Circle()
-                .fill(LinearGradient(colors: [DQ.Colors.mono400, DQ.Colors.mono200],
-                                     startPoint: .top, endPoint: .bottom))
-                .frame(width: 44, height: 44)
-                .blur(radius: CGFloat(1.0 - progress) * 12)
-                .clipShape(Circle())
-                .overlay(Circle().stroke(DQ.Colors.mono300, lineWidth: 1))
-            VStack(alignment: .leading, spacing: 1) {
-                Text("Revealing your match")
-                    .font(DQ.Typography.caption())
-                    .foregroundStyle(DQ.Colors.mono800)
-                Text("\(Int(progress * 100))% clear")
-                    .font(DQ.Typography.mono(10, weight: .medium))
-                    .foregroundStyle(DQ.Colors.mono600)
-            }
-            Spacer()
-        }
-        .padding(DQ.Spacing.sm)
-        .background(RoundedRectangle(cornerRadius: DQ.Radii.medium).fill(DQ.Colors.mono100))
-        .overlay(RoundedRectangle(cornerRadius: DQ.Radii.medium).stroke(DQ.Colors.mono300, lineWidth: 1))
-        .accessibilityLabel("Match photo \(Int(progress * 100)) percent revealed")
-    }
-
-    // MARK: - Gesture / AR Object Card (lighter challenge types)
-
-    private var gestureCard: some View {
-        VStack(spacing: DQ.Spacing.lg) {
-            Image(systemName: challenge.type == .arObject ? "cube.transparent" : "hand.wave")
-                .font(.system(size: 44))
-                .foregroundStyle(DQ.Colors.signal)
-            Button("Done") {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                isComplete = true
-                timer?.invalidate()
-            }
-            .buttonStyle(.dqSignal)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(DQ.Spacing.xl)
-        .background(RoundedRectangle(cornerRadius: DQ.Radii.xl).fill(DQ.Colors.mono100))
-        .overlay(RoundedRectangle(cornerRadius: DQ.Radii.xl).stroke(DQ.Colors.mono300, lineWidth: 1))
-    }
-
-    // MARK: - Answers Grid
-
-    private func answersGrid(options: [String]) -> some View {
-        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: DQ.Spacing.md) {
-            ForEach(options, id: \.self) { option in
-                let isSelected = selectedAnswer == option
-                Button {
-                    handleSelection(option)
-                } label: {
-                    Text(option)
-                        .font(DQ.Typography.body())
-                        .multilineTextAlignment(.center)
-                        .foregroundStyle(isSelected ? DQ.Colors.mono0 : DQ.Colors.mono900)
-                        .padding()
-                        .frame(maxWidth: .infinity, minHeight: 70)
-                        .background(isSelected ? DQ.Colors.signal : DQ.Colors.mono100)
-                        .clipShape(RoundedRectangle(cornerRadius: DQ.Radii.large))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: DQ.Radii.large)
-                                .stroke(isSelected ? DQ.Colors.signal : DQ.Colors.mono300, lineWidth: 1)
-                        )
-                        .scaleEffect(isSelected ? 1.04 : 1.0)
-                        .animation(reduceMotion ? nil : DQ.Anim.spring, value: selectedAnswer)
+            VStack(spacing: DQSpace.block) {
+                topBar
+                if let partner = matchManager.nearbyMatchProfile {
+                    PartnerStrip(
+                        name: partner.displayName,
+                        progress: revealProgress,
+                        tier: partner.trustLevel
+                    )
                 }
-                .accessibilityHint(selectedAnswer == nil ? "Double tap to select this answer" : "Answer already selected")
+                progressRow
+                gameCard
+                if let feedback {
+                    FeedbackBanner(text: feedback, kind: feedbackKind)
+                        .transition(.opacity)
+                }
+                ctaBlock
             }
+            // §3's 58 clears a status bar. Inside a sheet there isn't one, so
+            // the gutter is the right breathing room off the sheet's own edge.
+            .padding(.top, DQSpace.gutter)
+            .padding(.horizontal, DQSpace.gutter)
+            .padding(.bottom, DQSpace.safeBottom)
         }
-    }
-
-    // MARK: - Completion Banner
-
-    private var completionBanner: some View {
-        VStack(spacing: DQ.Spacing.lg) {
-            Image(systemName: "checkmark.seal.fill")
-                .font(.system(size: 44))
-                .foregroundStyle(DQ.Colors.signal)
-                .scaleEffect(celebrationScale)
-                .opacity(celebrationOpacity)
-                .accessibilityHidden(true)
-
-            TrustBadgeView(
-                trustLevel: matchManager.nearbyMatchProfile?.trustLevel ?? .bronze,
-                size: .medium
-            )
-
-            Text("Nice answer")
-                .font(DQ.Typography.sectionHeader())
-                .foregroundStyle(DQ.Colors.mono900)
-            Text("Your match picked too \u{2014} time to exchange info.")
-                .font(DQ.Typography.body())
-                .foregroundStyle(DQ.Colors.mono700)
-                .multilineTextAlignment(.center)
-            if isDemo {
-                Button("Continue") {
-                    onFinished?()
-                }
-                .buttonStyle(.dqSignal)
-            } else {
-                Button("NameDrop / Exchange Info") {
-                    initiateNameDrop()
-                }
-                .buttonStyle(.dqSignal)
-                Button("Rate this meet") {
-                    showRating = true
-                }
-                .foregroundStyle(DQ.Colors.mono600)
-            }
+        .onAppear { startTimer() }
+        .onDisappear { timer?.invalidate() }
+        .sheet(isPresented: $showNameDropOverlay) {
+            NameDropInstructionView()
         }
         .sheet(isPresented: $showRating) {
             PostMeetRatingView(matchID: matchManager.nearbyMatch?.id ?? "")
         }
+        .animation(reduceMotion ? nil : DQMotion.stage, value: revealProgress)
+        .animation(reduceMotion ? nil : DQMotion.stage, value: round)
+        .animation(reduceMotion ? nil : DQMotion.stage, value: isComplete)
+    }
+
+    // MARK: - Derived
+
+    private var revealProgress: Double {
+        matchManager.nearbyMatch
+            .flatMap { revealManager.activeSessions[$0.id]?.revealProgress } ?? 0.0
+    }
+
+    private var isWordChain: Bool { challenge.type == .wordAssociation }
+
+    private var gameTitle: String {
+        switch challenge.type {
+        case .trivia:          "Trivia"
+        case .wordAssociation: "Word chain"
+        case .gesture:         "Gesture"
+        case .arObject:        "AR object"
+        }
+    }
+
+    /// The chain as drawn: the seed the partner played, then each of your
+    /// links, then — while play continues — the word currently open for
+    /// linking. Once complete there is no open slot; every word has been played.
+    ///
+    /// The demo chain is one-sided: only the seed is the partner's, because the
+    /// game takes no partner input. The mock alternates theirs/yours since it
+    /// depicts a real two-player chain.
+    private var chainLinks: [(word: String, owner: WordChainPill.Owner)] {
+        var links: [(String, WordChainPill.Owner)] = []
+        for (index, word) in chainHistory.enumerated() {
+            links.append((word, index == 0 ? .theirs : .yours))
+        }
+        if !isComplete { links.append((chainPrompt, .open)) }
+        return links
+    }
+
+    // MARK: - Top Bar
+
+    private var topBar: some View {
+        HStack(spacing: DQSpace.tight) {
+            DQIconButton(symbol: "chevron.left", label: "Skip icebreaker") { dismiss() }
+
+            Spacer(minLength: 0)
+
+            Text(gameTitle)
+                .font(DQFont.labelSized(11))
+                .tracking(DQFont.track(11, em: 0.18))
+                .textCase(.uppercase)
+                .foregroundStyle(p.text2)
+
+            Spacer(minLength: 0)
+
+            Menu {
+                Button(role: .cancel) { dismiss() } label: {
+                    Label("Skip icebreaker", systemImage: "forward.end")
+                }
+            } label: {
+                Image(systemName: "ellipsis").dqIconChrome()
+            }
+            .frame(width: DQSize.minHitTarget, height: DQSize.minHitTarget)
+            .accessibilityLabel("More options")
+        }
+    }
+
+    // MARK: - Progress Row
+
+    private var progressRow: some View {
+        HStack(spacing: DQSpace.tight) {
+            Text("\(timeRemaining)s left")
+                .font(DQFont.labelSized(10, .semibold))
+                .tracking(DQFont.track(10, em: 0.14))
+                .textCase(.uppercase)
+                .foregroundStyle(timeRemaining <= challenge.durationSeconds / 4
+                                 ? p.text : p.text2)
+                .monospacedDigit()
+                .accessibilityLabel("\(timeRemaining) seconds remaining")
+                .accessibilityAddTraits(.updatesFrequently)
+
+            Spacer(minLength: 0)
+
+            if isWordChain {
+                ProgressPips(total: wordChainRounds, filled: min(round - 1, wordChainRounds))
+            }
+        }
+    }
+
+    // MARK: - Game Card
+
+    @ViewBuilder
+    private var gameCard: some View {
+        Group {
+            if isWordChain {
+                wordChainCard
+            } else if let options = challenge.options {
+                triviaCard(options: options)
+            } else {
+                gestureCard
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: DQRadius.hero, style: .continuous)
+                .fill(p.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DQRadius.hero, style: .continuous)
+                .strokeBorder(p.line, lineWidth: 1)
+        )
+        .dqShadow(.small(theme))
+    }
+
+    private func triviaCard(options: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            eyebrow("Mutual prompt")
+
+            Text(challenge.prompt)
+                .font(DQFont.title)
+                .tracking(DQFont.trackTitle)
+                .foregroundStyle(p.text)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(spacing: DQSpace.tight) {
+                ForEach(Array(options.enumerated()), id: \.offset) { index, option in
+                    IcebreakerOptionRow(
+                        text: option,
+                        letter: Self.optionLetters[index % Self.optionLetters.count],
+                        isSelected: selectedAnswer == option,
+                        isEnabled: selectedAnswer == nil && !isComplete
+                    ) {
+                        handleSelection(option)
+                    }
+                }
+            }
+            .padding(.top, 2)
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var wordChainCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            eyebrow("Shared chain")
+
+            // §5's streak chip has no backing data on IcebreakerChallenge, so
+            // it is omitted rather than invented — same rule §5 applies to the
+            // VibeScoreBreakdown percentile.
+            FlowLayout(spacing: 8) {
+                ForEach(Array(chainLinks.enumerated()), id: \.offset) { _, link in
+                    WordChainPill(word: link.word, owner: link.owner)
+                }
+            }
+
+            if let options = challenge.options, !isComplete {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Link a word to \u{201C}\(chainPrompt)\u{201D}")
+                        .font(DQFont.labelSized(9, .semibold))
+                        .tracking(DQFont.track(9, em: 0.16))
+                        .textCase(.uppercase)
+                        .foregroundStyle(p.text2)
+
+                    // §5 specifies a free-text input with an ember send FAB.
+                    // The chain advances by picking from `challenge.options` —
+                    // accepting arbitrary words is a new game rule, not a skin,
+                    // so the option rows stay until that logic exists.
+                    VStack(spacing: DQSpace.tight) {
+                        ForEach(Array(options.enumerated()), id: \.offset) { index, option in
+                            IcebreakerOptionRow(
+                                text: option,
+                                letter: Self.optionLetters[index % Self.optionLetters.count],
+                                isSelected: selectedAnswer == option,
+                                isEnabled: selectedAnswer == nil
+                            ) {
+                                handleSelection(option)
+                            }
+                        }
+                    }
+                }
+                .padding(.top, 2)
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var gestureCard: some View {
+        VStack(spacing: DQSpace.gutter) {
+            Spacer(minLength: 0)
+            Image(systemName: challenge.type == .arObject ? "cube.transparent" : "hand.wave")
+                .font(.system(size: 40, weight: .light))
+                .foregroundStyle(p.text2)
+            Text(challenge.prompt)
+                .font(DQFont.titleS)
+                .tracking(DQFont.trackTitleS)
+                .foregroundStyle(p.text)
+                .multilineTextAlignment(.center)
+            Button("Done") {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                complete(feedback: "Nice one")
+            }
+            .buttonStyle(.dqNeutral)
+            .padding(.top, 2)
+            Spacer(minLength: 0)
+        }
         .frame(maxWidth: .infinity)
-        .padding(DQ.Spacing.xl)
-        .background(RoundedRectangle(cornerRadius: DQ.Radii.xl).fill(DQ.Colors.mono100))
-        .overlay(RoundedRectangle(cornerRadius: DQ.Radii.xl).stroke(DQ.Colors.mono300, lineWidth: 1))
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Icebreaker complete. Tap to exchange contact information.")
-        .onAppear {
-            guard !reduceMotion else {
-                celebrationScale = 1.0
-                celebrationOpacity = 1.0
-                return
+    }
+
+    private func eyebrow(_ text: String) -> some View {
+        Text(text)
+            .font(DQFont.labelSized(9, .semibold))
+            .tracking(DQFont.track(9, em: 0.2))
+            .textCase(.uppercase)
+            .foregroundStyle(p.text3)
+    }
+
+    // MARK: - CTA
+
+    @ViewBuilder
+    private var ctaBlock: some View {
+        if isComplete {
+            if isDemo {
+                Button("Continue") { onFinished?() }
+                    .buttonStyle(.dqNeutral)
+            } else {
+                VStack(spacing: DQSpace.tight) {
+                    Button("NameDrop / Exchange Info") { initiateNameDrop() }
+                        .buttonStyle(.dqNeutral)
+                    Button("Rate this meet") { showRating = true }
+                        .buttonStyle(.dqGhost)
+                }
             }
-            withAnimation(DQ.Anim.bouncy) {
-                celebrationScale = 1.0
-                celebrationOpacity = 1.0
-            }
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+        } else {
+            // A disabled pill is a dead end (§6.1); this one reports what the
+            // screen is waiting for instead.
+            Text(isWordChain ? "Choose a link" : "Pick an answer")
+                .font(DQFont.button)
+                .foregroundStyle(p.text2)
+                .frame(maxWidth: .infinity)
+                .frame(height: DQSize.ghostHeight)
+                .overlay(Capsule().strokeBorder(p.lineStrong, lineWidth: 1))
+                .accessibilityHidden(true)
         }
     }
 
@@ -283,19 +338,38 @@ struct IcebreakerView: View {
 
         // Word Association: chain forward for a few rounds before finishing.
         if challenge.type == .wordAssociation && round < wordChainRounds {
-            withAnimation(reduceMotion ? nil : DQ.Anim.spring) {
+            withAnimation(reduceMotion ? nil : DQMotion.stage) {
+                chainHistory.append(chainPrompt)
                 round += 1
                 chainPrompt = option
+                feedback = "Strong link"
+                feedbackKind = .success
             }
             return
         }
 
         selectedAnswer = option
-        isComplete = true
+        if challenge.type == .wordAssociation {
+            // Close the chain out: the word that was open, then the final link.
+            chainHistory.append(chainPrompt)
+            chainHistory.append(option)
+        }
+        complete(feedback: isWordChain ? "Chain complete" : "Answer locked in")
+    }
+
+    private func complete(feedback text: String) {
         timer?.invalidate()
+        withAnimation(reduceMotion ? nil : DQMotion.stage) {
+            feedback = text
+            feedbackKind = .success
+            isComplete = true
+        }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 
     // MARK: - Helpers
+
+    private static let optionLetters = ["A", "B", "C", "D"]
 
     private func startTimer() {
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
@@ -313,7 +387,11 @@ struct IcebreakerView: View {
                 }
             } else {
                 timer?.invalidate()
-                isComplete = true
+                withAnimation(reduceMotion ? nil : DQMotion.stage) {
+                    feedback = "Time's up"
+                    feedbackKind = .neutral
+                    isComplete = true
+                }
             }
         }
     }

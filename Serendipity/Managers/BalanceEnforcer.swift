@@ -41,12 +41,27 @@ final class BalanceEnforcer: ObservableObject {
 
     // MARK: - Init
 
-    private init() {
-        listenToGenderStats()
-    }
+    private init() {}
 
     deinit {
         statsListener?.remove()
+    }
+
+    // MARK: - Listener Lifecycle
+
+    /// Starts the real-time gender-stats listener. Idempotent — no-op if already
+    /// listening. Call this only after a successful profile load (e.g. from
+    /// AuthViewModel/MatchManager) so it never fires before authentication and
+    /// avoids noisy reads/logs on cold start or during testing.
+    func startListening() {
+        guard statsListener == nil else { return }
+        listenToGenderStats()
+    }
+
+    /// Stops the real-time listener and clears it so it can be restarted later.
+    func stopListening() {
+        statsListener?.remove()
+        statsListener = nil
     }
 
     // MARK: - Real-Time Listener

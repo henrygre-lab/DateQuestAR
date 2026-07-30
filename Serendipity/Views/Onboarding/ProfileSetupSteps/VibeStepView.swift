@@ -4,6 +4,7 @@ import SwiftUI
 
 struct VibeStepView: View {
     @Binding var selectedVibes: Set<String>
+    @Environment(\.dq) private var p
 
     let allVibes = [
         "Chill hangout", "Deep conversation", "Adventure buddy",
@@ -13,31 +14,43 @@ struct VibeStepView: View {
     ]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: DQ.Spacing.xl) {
+        VStack(alignment: .leading, spacing: DQSpace.gutter) {
             Text("What kind of connection are you looking for right now?")
-                .font(DQ.Typography.body())
-                .foregroundStyle(DQ.Colors.textSecondary)
+                .font(DQFont.body)
+                .foregroundStyle(p.text2)
+                .fixedSize(horizontal: false, vertical: true)
 
             Text("Select all that match your vibe. This helps us find compatible matches nearby.")
-                .font(DQ.Typography.caption())
-                .foregroundStyle(DQ.Colors.textTertiary)
+                .font(DQFont.bodyS)
+                .foregroundStyle(p.text3)
+                .fixedSize(horizontal: false, vertical: true)
 
-            FlowLayout {
+            FlowLayout(spacing: 7) {
                 ForEach(allVibes, id: \.self) { vibe in
-                    ChipToggle(label: vibe, isOn: selectedVibes.contains(vibe)) {
+                    Button {
                         if selectedVibes.contains(vibe) {
                             selectedVibes.remove(vibe)
                         } else {
                             selectedVibes.insert(vibe)
                         }
+                    } label: {
+                        DQChip(text: vibe, selected: selectedVibes.contains(vibe))
+                            .frame(minHeight: DQSize.minHitTarget)
+                            .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(vibe)
+                    .accessibilityAddTraits(
+                        selectedVibes.contains(vibe) ? [.isButton, .isSelected] : .isButton
+                    )
                 }
             }
 
             if !selectedVibes.isEmpty {
-                Text("\(selectedVibes.count) vibe(s) selected")
-                    .font(DQ.Typography.caption())
-                    .foregroundStyle(DQ.Colors.accent)
+                Text("\(selectedVibes.count)")
+                    .font(DQFont.monoSized(13, .medium))
+                    .foregroundStyle(p.text3)
+                    .accessibilityLabel("\(selectedVibes.count) vibes selected")
             }
         }
     }

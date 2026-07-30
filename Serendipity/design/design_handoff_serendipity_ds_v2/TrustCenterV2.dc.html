@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet data-dc-atomics>
+<script src="./image-slot.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--dq-bg:#101113;--dq-surface:#1A1B1E;--dq-surface-2:#24262A;--dq-text:#F6F7F8;--dq-text-2:#9BA0A8;--dq-text-3:#6A6F77;--dq-line:rgba(255,255,255,.09);--dq-line-strong:rgba(255,255,255,.18);--dq-track:rgba(255,255,255,.12);--dq-ember:#F2683C;--dq-ember-soft:rgba(242,104,60,.16);--dq-ember-line:rgba(242,104,60,.38);--dq-ember-text:#FF8A5F;--dq-ember-glow:rgba(242,104,60,.32);--dq-verify:#2E9BF0;--dq-live:#4ADE80;--dq-danger:#E5484D;--dq-cta:#FFFFFF;--dq-cta-text:#15161A;--dq-bronze:#C08457;--dq-silver:#B9C0CA;--dq-gold:#E8B44A;--dq-platinum-ink:#D9E6F2;--dq-platinum-fill:rgba(217,230,242,.14);--dq-shadow:0 22px 48px rgba(0,0,0,.5);--dq-shadow-sm:0 8px 22px rgba(0,0,0,.34)}
+@keyframes dqTierGlow{0%,100%{box-shadow:0 0 0 0 rgba(217,230,242,0)}50%{box-shadow:0 0 26px 0 rgba(217,230,242,.4)}}
+</style>
+</helmet>
+<x-import component-from-global-scope="IOSDevice" from="./ios-frame.jsx" dark="{{ isDark }}" width="{{ frameW }}" height="{{ frameH }}" hint-size="393px,852px">
+<div style="height:100%;box-sizing:border-box;display:flex;flex-direction:column;gap:16px;padding:58px 16px 24px;background:var(--dq-bg);color:var(--dq-text);font-family:'Plus Jakarta Sans',system-ui,sans-serif">
+
+  <div style="display:flex;align-items:center;gap:12px">
+    <div style="width:38px;height:38px;border-radius:50%;background:var(--dq-surface);border:1px solid var(--dq-line);display:flex;align-items:center;justify-content:center"><span style="font:600 15px/1 'Plus Jakarta Sans';color:var(--dq-text)">←</span></div>
+    <span style="font:800 20px/1 'Plus Jakarta Sans';letter-spacing:-.02em;color:var(--dq-text)">Trust &amp; verification</span>
+  </div>
+
+  <!-- CURRENT TIER -->
+  <div style="display:flex;flex-direction:column;gap:14px;padding:20px;border-radius:28px;background:var(--dq-surface);border:1px solid var(--dq-line);box-shadow:var(--dq-shadow);animation:dqTierGlow 3.2s ease-in-out infinite">
+    <div style="display:flex;align-items:center;gap:14px">
+      <div style="width:54px;height:54px;border-radius:50%;background:var(--dq-platinum-fill);display:flex;align-items:center;justify-content:center;font:800 21px/1 'Plus Jakarta Sans';color:var(--dq-platinum-ink);flex-shrink:0">◆</div>
+      <div style="flex:1;display:flex;flex-direction:column;gap:5px">
+        <span style="font:600 9px/1 'Plus Jakarta Sans';letter-spacing:.2em;text-transform:uppercase;color:var(--dq-text-3)">Current tier</span>
+        <span style="font:800 24px/1 'Plus Jakarta Sans';letter-spacing:-.03em;color:var(--dq-platinum-ink)">Platinum</span>
+        <span style="font:500 11.5px/1.4 'Plus Jakarta Sans';color:var(--dq-text-2)">Upgraded from Gold just now · avg 4.6 over 11 meets</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:5px">
+      <div style="flex:1;height:6px;border-radius:999px;background:var(--dq-bronze)"></div>
+      <div style="flex:1;height:6px;border-radius:999px;background:var(--dq-silver)"></div>
+      <div style="flex:1;height:6px;border-radius:999px;background:var(--dq-gold)"></div>
+      <div style="flex:1;height:6px;border-radius:999px;background:var(--dq-platinum-ink)"></div>
+    </div>
+  </div>
+
+  <!-- LADDER -->
+  <div style="display:flex;flex-direction:column;gap:11px;flex:1">
+    <span style="font:600 9px/1 'Plus Jakarta Sans';letter-spacing:.2em;text-transform:uppercase;color:var(--dq-text-3)">How tiers are earned</span>
+    <sc-for list="{{ tiers }}" as="tier" hint-placeholder-count="4">
+      <div style="display:flex;align-items:center;gap:14px;padding:15px 17px;border-radius:22px;background:var(--dq-surface);border:{{ tier.border }}">
+        <span style="font-size:15px;color:{{ tier.color }};flex-shrink:0">◆</span>
+        <div style="flex:1;display:flex;flex-direction:column;gap:3px">
+          <span style="font:700 14px/1 'Plus Jakarta Sans';letter-spacing:-.01em;color:var(--dq-text)">{{ tier.name }}</span>
+          <span style="font:500 11.5px/1.4 'Plus Jakarta Sans';color:var(--dq-text-2)">{{ tier.req }}</span>
+        </div>
+        <span style="flex-shrink:0;{{ tier.markStyle }}">{{ tier.mark }}</span>
+      </div>
+    </sc-for>
+  </div>
+
+  <div style="display:flex;align-items:flex-start;gap:11px;padding:15px 17px;border-radius:22px;background:var(--dq-surface-2);border:1px solid var(--dq-line)">
+    <span style="width:20px;height:20px;border-radius:50%;border:1.5px solid var(--dq-text-3);display:flex;align-items:center;justify-content:center;flex-shrink:0;font:700 10px/1 'Plus Jakarta Sans';color:var(--dq-text-3)">i</span>
+    <span style="flex:1;font:500 11.5px/1.5 'Plus Jakarta Sans';color:var(--dq-text-2)">Tiers reflect verification and post-meet ratings only. They are never a ranking, and they never affect who sees you.</span>
+  </div>
+
+  <button style="height:54px;border:none;border-radius:999px;background:var(--dq-cta);color:var(--dq-cta-text);font:700 15px/1 'Plus Jakarta Sans';cursor:pointer;box-shadow:var(--dq-shadow-sm)">Manage verification</button>
+
+</div>
+</x-import>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:393,&quot;height&quot;:852},&quot;mode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    const done = {
+      mark: '✓',
+      markStyle: 'width:24px;height:24px;border-radius:50%;background:var(--dq-ember);display:flex;align-items:center;justify-content:center;font:800 12px/1 Plus Jakarta Sans;color:#fff',
+    };
+    const now = {
+      mark: 'NOW',
+      markStyle: "padding:6px 11px;border-radius:999px;background:var(--dq-platinum-fill);font:800 9px/1 'Plus Jakarta Sans';letter-spacing:.1em;color:var(--dq-platinum-ink)",
+    };
+    return {
+      isDark: (this.props.mode ?? 'dark') === 'dark', frameW: 393, frameH: 852,
+      tiers: [
+        {name:'Bronze', req:'Email verified', color:'var(--dq-bronze)', border:'1px solid var(--dq-line)', ...done},
+        {name:'Silver', req:'Liveness check passed', color:'var(--dq-silver)', border:'1px solid var(--dq-line)', ...done},
+        {name:'Gold', req:'Government ID face match', color:'var(--dq-gold)', border:'1px solid var(--dq-line)', ...done},
+        {name:'Platinum', req:'Average post-meet rating ≥ 4.0', color:'var(--dq-platinum-ink)', border:'1.5px solid var(--dq-platinum-ink)', ...now},
+      ],
+    };
+  }
+}
+</script>
+</body>
+</html>

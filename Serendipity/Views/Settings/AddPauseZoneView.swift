@@ -1,82 +1,71 @@
 import SwiftUI
 
 // MARK: - Add Pause Zone
+//
+// DesignSystem v2 skin. The zone written on "Add" is unchanged: same label,
+// same geohash source, same radius bounds (50–500 m in 50 m steps).
 
 struct AddPauseZoneView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dq) private var p
     var onAdd: (GeoFenceZone) -> Void
+
     @State private var label = ""
     @State private var radius = 200.0
 
+    private var radiusSteps: Binding<Int> {
+        Binding(get: { Int(radius) }, set: { radius = Double($0) })
+    }
+
     var body: some View {
         NavigationStack {
-            VStack(spacing: DQ.Spacing.xxl) {
-                DQTextField(label: "Zone name",
-                            placeholder: "Zone name (e.g. Home)", text: $label,
-                            isSecure: false)
+            ZStack {
+                p.bg.ignoresSafeArea()
 
-                VStack(alignment: .leading, spacing: DQ.Spacing.xs) {
-                    Text("Radius")
-                        .font(DQ.Typography.sectionLabel())
-                        .foregroundStyle(DQ.Colors.textQuaternary)
-                        .tracking(0.5)
-                        .textCase(.uppercase)
-                    HStack(spacing: DQ.Spacing.md) {
-                        Button {
-                            if radius > 50 { radius -= 50 }
-                        } label: {
-                            Image(systemName: "minus")
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundStyle(DQ.Colors.textSecondary)
-                                .frame(width: 32, height: 32)
-                                .background(DQ.Colors.surfaceElevated)
-                                .clipShape(Circle())
+                VStack(spacing: DQSpace.gutter) {
+                    DQTopBar(title: "Add pause zone", style: .pushed, onBack: { dismiss() }) {
+                        DQTopBarAction(title: "Add") {
+                            let zone = GeoFenceZone(
+                                label: label,
+                                geohash: LocationService.shared.currentGeohash ?? "",
+                                radiusMeters: radius,
+                                isActive: true
+                            )
+                            onAdd(zone)
+                            dismiss()
                         }
-                        Text("\(Int(radius))m")
-                            .font(DQ.Typography.bodyBold())
-                            .foregroundStyle(DQ.Colors.textPrimary)
-                            .frame(minWidth: 48)
-                        Button {
-                            if radius < 500 { radius += 50 }
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundStyle(DQ.Colors.textSecondary)
-                                .frame(width: 32, height: 32)
-                                .background(DQ.Colors.surfaceElevated)
-                                .clipShape(Circle())
-                        }
+                        .disabled(label.isEmpty)
+                        .opacity(label.isEmpty ? 0.45 : 1)
                     }
-                }
 
-                Text("Your exact location is never stored — zones use anonymized geohashes.")
-                    .font(DQ.Typography.caption())
-                    .foregroundStyle(DQ.Colors.textQuaternary)
+                    DQTextField(
+                        label: "Zone name",
+                        placeholder: "Zone name (e.g. Home)",
+                        text: $label
+                    )
 
-                Spacer()
-            }
-            .padding(DQ.Spacing.xl)
-            .dqBackground()
-            .navigationTitle("Add Pause Zone")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
-                    Button("Cancel") { dismiss() }
-                        .foregroundStyle(DQ.Colors.textSecondary)
-                }
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Add") {
-                        let zone = GeoFenceZone(label: label,
-                                                geohash: LocationService.shared.currentGeohash ?? "",
-                                                radiusMeters: radius, isActive: true)
-                        onAdd(zone)
-                        dismiss()
+                    DQGroup {
+                        DQStepperRow(
+                            label: "Radius",
+                            value: radiusSteps,
+                            range: 50...500,
+                            step: 50,
+                            format: { "\($0) m" }
+                        )
                     }
-                    .disabled(label.isEmpty)
-                    .foregroundStyle(label.isEmpty ? DQ.Colors.textQuaternary : DQ.Colors.accent)
-                    .fontWeight(.semibold)
+
+                    DQFootnote(
+                        text: "Your exact location is never stored — zones use anonymized geohashes."
+                    )
+
+                    Spacer(minLength: 0)
                 }
+                .padding(.horizontal, DQSpace.gutter)
+                .padding(.top, DQSpace.safeTop)
+                .padding(.bottom, DQSpace.safeBottom)
             }
+            .ignoresSafeArea(edges: .top)
+            .toolbar(.hidden, for: .navigationBar)
         }
     }
 }

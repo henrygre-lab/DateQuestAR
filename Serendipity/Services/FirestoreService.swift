@@ -56,7 +56,16 @@ final class FirestoreService {
     // MARK: - Nearby Users (Geohash Query)
 
     /// Fetches active users within the geohash neighborhood.
-    func fetchNearbyUsers(geohash: String, excludeUID: String) async throws -> [UserProfile] {
+    /// Pass `debugForceMock: true` (DEBUG builds only) to get deterministic mock
+    /// nearby users for exercising the proximity → alert → icebreaker flow on a
+    /// single device.
+    func fetchNearbyUsers(geohash: String, excludeUID: String, debugForceMock: Bool = false) async throws -> [UserProfile] {
+        #if DEBUG
+        if debugForceMock {
+            return mockNearbyUsersForTesting(excludeUID: excludeUID)
+        }
+        #endif
+
         // TODO: Use GeoFire or geohash range queries for efficient proximity search
         let snapshot = try await usersCollection
             .whereField("privacySettings.questModeEnabled", isEqualTo: true)
@@ -67,6 +76,71 @@ final class FirestoreService {
             .compactMap { try $0.data(as: UserProfile.self) }
             .filter { $0.uid != excludeUID }
     }
+
+    #if DEBUG
+    /// Deterministic mock nearby users for single-device testing. DEBUG-only —
+    /// never compiled into release. Covers different genders, trust tiers, and
+    /// intent vibes so the full match → alert → icebreaker path can be exercised.
+    private func mockNearbyUsersForTesting(excludeUID: String) -> [UserProfile] {
+        func make(uid: String, name: String, age: Int, gender: Gender,
+                  trust: UserProfile.TrustLevel, interests: [String],
+                  relationships: [MatchPreferences.RelationshipType],
+                  vibes: [String]) -> UserProfile {
+            UserProfile(
+                uid: uid,
+                displayName: name,
+                age: age,
+                bio: "\(name) is a demo profile for on-device testing.",
+                photoURLs: [],
+                selfDescriptors: [],
+                verificationStatus: .verified,
+                trustLevel: trust,
+                verifiedAge: age,
+                verificationCompletedAt: Date(),
+                preferences: MatchPreferences(
+                    ageRange: 21...40,
+                    maxDistanceMiles: 0.25,
+                    relationshipTypes: relationships,
+                    genderPreferences: [],
+                    interests: interests,
+                    dealbreakers: [],
+                    compatibilityThreshold: 0.80
+                ),
+                privacySettings: PrivacySettings(
+                    questModeEnabled: true,
+                    visibilityRadius: 0.25,
+                    autoPauseZones: [],
+                    alertLimit: 10,
+                    locationSharingMode: .anonymized,
+                    showInCommunityEvents: true
+                ),
+                gamification: GamificationProfile(),
+                isProfileComplete: true,
+                trustScore: 0.85,
+                createdAt: Date(),
+                lastActive: Date(),
+                gender: gender,
+                accountStatus: .active,
+                intentVibes: vibes,
+                socialContextPreference: true
+            )
+        }
+
+        let mocks = [
+            make(uid: "test_user_a", name: "Test User A", age: 26, gender: .female,
+                 trust: .gold, interests: ["coffee", "hiking", "coding"],
+                 relationships: [.longTerm], vibes: ["adventurous", "genuine", "spontaneous"]),
+            make(uid: "test_user_b", name: "Test User B", age: 29, gender: .male,
+                 trust: .silver, interests: ["coffee", "gaming"],
+                 relationships: [.casual], vibes: ["genuine", "chill"]),
+            make(uid: "test_user_c", name: "Test User C", age: 24, gender: .nonBinary,
+                 trust: .platinum, interests: ["art", "coffee", "travel"],
+                 relationships: [.longTerm, .friendship], vibes: ["creative", "spontaneous", "genuine"])
+        ]
+
+        return mocks.filter { $0.uid != excludeUID }
+    }
+    #endif
 
     // MARK: - Matches
 

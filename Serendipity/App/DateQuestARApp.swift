@@ -23,6 +23,10 @@ struct DateQuestARApp: App {
                 .environmentObject(alertCapManager)
                 .environmentObject(balanceEnforcer)
                 .preferredColorScheme(.dark)
+                // The one and only DesignSystem v2 theme pin. Every v2 surface
+                // reads `@Environment(\.dq)` and inherits from here — including
+                // sheets and full-screen covers. Do not pin per surface.
+                .dqTheme(DQThemePreference.resolved)
                 .onAppear {
                     requestTrackingPermission()
                 }

@@ -16,6 +16,7 @@ import FirebaseFunctions
 struct ProfileSetupView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
     @EnvironmentObject var balanceEnforcer: BalanceEnforcer
+    @Environment(\.dq) private var p
     @StateObject private var verifier = SafetyVerifier()
     @State private var step: SetupStep = .verification
     @State private var selectedPhotos: [PhotosPickerItem] = []
@@ -51,61 +52,44 @@ struct ProfileSetupView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                progressBar
-                stepContent
-                    .padding()
-                Spacer()
-                navigationButtons
-                    .padding(.horizontal)
-                    .padding(.bottom, DQ.Spacing.giant)
-            }
-            .navigationTitle(step.title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    #if DEBUG
-                    Button("Skip") {
-                        authViewModel.appState = .authenticated
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    #endif
-                }
-            }
-            .dqBackground()
-            .overlay {
-                if isSaving {
-                    ZStack {
-                        Color.black.opacity(0.4).ignoresSafeArea()
-                        VStack(spacing: DQ.Spacing.lg) {
-                            ProgressView()
-                                .tint(.white)
-                                .scaleEffect(1.5)
-                            Text("Creating your profile...")
-                                .foregroundStyle(.white)
-                                .font(DQ.Typography.cardTitle())
+            ZStack {
+                p.bg.ignoresSafeArea()
+
+                VStack(spacing: 0) {
+                    DQTopBar(title: step.title, style: .pushed) {
+                        #if DEBUG
+                        DQTopBarAction(title: "Skip") {
+                            authViewModel.appState = .authenticated
                         }
+                        #endif
                     }
+
+                    // Onboarding gets a plain dot row — StageStepper reads as
+                    // reveal progress and would import a meaning that is not here.
+                    DQStepDots(total: SetupStep.allCases.count, current: step.rawValue)
+
+                    ScrollView {
+                        stepContent
+                    }
+
+                    navigationButtons
+                        .padding(.top, DQSpace.gutter)
                 }
+                .padding(.horizontal, DQSpace.gutter)
+                .padding(.top, DQSpace.safeTop)
+                .padding(.bottom, DQSpace.safeBottom)
             }
+            .ignoresSafeArea(edges: .top)
+            .toolbar(.hidden, for: .navigationBar)
+            // A commit, not a fetch: there is no incoming shape to preview
+            // because the user is leaving the screen, so it spins.
+            .dqBlockingSave(isActive: isSaving, title: "Creating your profile…")
             .alert("Something went wrong", isPresented: $showErrorAlert) {
                 Button("OK", role: .cancel) {}
             } message: {
                 Text(saveError ?? "Please try again.")
             }
         }
-    }
-
-    // MARK: - Progress Bar
-
-    private var progressBar: some View {
-        let total = SetupStep.allCases.count
-        let current = step.rawValue + 1
-        return ProgressView(value: Double(current), total: Double(total))
-            .tint(DQ.Colors.accent)
-            .padding(.horizontal)
-            .accessibilityLabel("Step \(current) of \(total): \(step.title)")
     }
 
     // MARK: - Step Content
@@ -136,18 +120,17 @@ struct ProfileSetupView: View {
     // MARK: - Navigation Buttons
 
     private var navigationButtons: some View {
-        HStack {
+        HStack(spacing: DQSpace.tight) {
             if step != .verification {
                 Button("Back") {
                     withAnimation { step = SetupStep(rawValue: step.rawValue - 1) ?? .verification }
                 }
-                .buttonStyle(.dqSecondary)
+                .buttonStyle(.dqGhost)
             }
-            Spacer()
             Button(step == .privacy ? "Start Questing" : "Next") {
                 advanceStep()
             }
-            .buttonStyle(.dqPrimary)
+            .buttonStyle(.dqNeutral)
             .disabled(isSaving)
             .accessibilityHint(step == .privacy ? "Finishes setup and enters the app" : "Advances to the next step")
         }

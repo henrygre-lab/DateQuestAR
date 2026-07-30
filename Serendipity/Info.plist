@@ -24,5 +24,18 @@
     <array>
         <string>armv7</string>
     </array>
+    <!-- DesignSystem v2 type. Both families are SIL Open Font License 1.1;
+         the licences ship alongside them in Resources/Fonts. PostScript names
+         are mapped in DQFont — IBM Plex Mono's are irregular. -->
+    <key>UIAppFonts</key>
+    <array>
+        <string>PlusJakartaSans-Regular.ttf</string>
+        <string>PlusJakartaSans-Medium.ttf</string>
+        <string>PlusJakartaSans-SemiBold.ttf</string>
+        <string>PlusJakartaSans-Bold.ttf</string>
+        <string>PlusJakartaSans-ExtraBold.ttf</string>
+        <string>IBMPlexMono-Regular.ttf</string>
+        <string>IBMPlexMono-Medium.ttf</string>
+    </array>
 </dict>
 </plist>

@@ -4,29 +4,41 @@ import SwiftUI
 
 struct VerificationUpsellCard: View {
     @StateObject private var verifier = SafetyVerifier()
+    @Environment(\.dq) private var p
     @State private var isVerifying = false
 
     var body: some View {
-        VStack(spacing: DQ.Spacing.md) {
-            HStack(spacing: DQ.Spacing.sm) {
-                Image(systemName: "checkmark.shield.fill")
-                    .font(.system(size: 20))
-                    .foregroundStyle(DQ.Colors.accent)
-                VStack(alignment: .leading, spacing: DQ.Spacing.xxxs) {
-                    Text("Get Verified")
-                        .font(DQ.Typography.bodyBold())
-                        .foregroundStyle(DQ.Colors.textPrimary)
+        VStack(spacing: DQSpace.tight) {
+            HStack(spacing: DQSpace.tight) {
+                // A verify glyph, which §8 still allows a leading position.
+                Image(systemName: "checkmark.shield")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(p.verify)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Get verified")
+                        .font(DQFont.uiSized(14, .semibold))
+                        .foregroundStyle(p.text)
                     Text("Verified users get 2x visibility and a trust badge")
-                        .font(DQ.Typography.caption())
-                        .foregroundStyle(DQ.Colors.textTertiary)
+                        .font(DQFont.uiSized(11.5, .medium))
+                        .foregroundStyle(p.text2)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer()
+                Spacer(minLength: 0)
             }
 
             if verifier.verificationBadge == .verified {
-                Label("Verified", systemImage: "checkmark.circle.fill")
-                    .font(DQ.Typography.caption())
-                    .foregroundStyle(DQ.Colors.success)
+                HStack(spacing: DQSpace.tight) {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 10, weight: .heavy))
+                        .foregroundStyle(.white)
+                        .frame(width: 20, height: 20)
+                        .background(Circle().fill(p.verify))
+                    Text("Verified")
+                        .font(DQFont.uiSized(13, .semibold))
+                        .foregroundStyle(p.text)
+                    Spacer(minLength: 0)
+                }
             } else {
                 Button {
                     isVerifying = true
@@ -36,25 +48,22 @@ struct VerificationUpsellCard: View {
                     }
                 } label: {
                     if isVerifying {
-                        ProgressView()
-                            .tint(DQ.Colors.accent)
+                        ProgressView().tint(p.text2)
                     } else {
-                        Text("Verify Now")
-                            .font(DQ.Typography.caption().bold())
+                        Text("Verify now")
                     }
                 }
-                .buttonStyle(.dqSecondary)
+                .buttonStyle(.dqGhost)
                 .disabled(isVerifying)
             }
         }
-        .padding(DQ.Spacing.lg)
+        .padding(DQSpace.card)
         .background(
-            RoundedRectangle(cornerRadius: DQ.Radii.large)
-                .fill(DQ.Colors.surfaceCard)
-                .overlay(
-                    RoundedRectangle(cornerRadius: DQ.Radii.large)
-                        .stroke(DQ.Colors.accent.opacity(0.2), lineWidth: 1)
-                )
+            RoundedRectangle(cornerRadius: DQRadius.card, style: .continuous).fill(p.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: DQRadius.card, style: .continuous)
+                .strokeBorder(p.line, lineWidth: 1)
         )
     }
 }

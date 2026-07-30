@@ -9,11 +9,14 @@
 import SwiftUI
 import MapKit
 
+/// DesignSystem v2 skin. Rows, groups and controls come from `DQFormParts`;
+/// every setting, gate and destination behaves exactly as before.
 struct SettingsView: View {
     @EnvironmentObject var authViewModel: AuthViewModel
     @EnvironmentObject var locationService: LocationService
     @EnvironmentObject var matchManager: MatchManager
     @EnvironmentObject var balanceEnforcer: BalanceEnforcer
+    @Environment(\.dq) private var p
 
     @State private var questEnabled = true
     @State private var alertLimit = 5
@@ -21,37 +24,56 @@ struct SettingsView: View {
     @State private var showCommunityEvents = true
     @State private var autoZones: [GeoFenceZone] = []
     @State private var showAddZone = false
-    @State private var showDeleteAccountAlert = false
+    @State private var showDeleteAccountConfirm = false
     @State private var selectedVibes: Set<String> = []
     @State private var globalPauseEnabled = false
 
+    private let allVibes = [
+        "Chill hangout", "Deep conversation", "Adventure buddy",
+        "Coffee date", "Group outing", "Creative collab",
+        "Workout partner", "Foodie crawl", "Night out",
+        "Study buddy", "Dog walk", "Just vibing"
+    ]
+
+    private var alertCap: Int {
+        max(1, balanceEnforcer.calculateAlertCap(for: authViewModel.currentUser?.gender ?? .preferNotToSay))
+    }
+
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(spacing: DQ.Spacing.xxl) {
-                    questSection
-                    balanceAndSafetySection
-                    privacySection
-                    autoPauseSection
-                    safetySection
-                    accountSection
+            ZStack {
+                p.bg.ignoresSafeArea()
+
+                ScrollView {
+                    VStack(spacing: DQSpace.gutter) {
+                        DQTopBar(title: "Settings")
+                        questSection
+                        balanceAndSafetySection
+                        privacySection
+                        autoPauseSection
+                        safetySection
+                        accountSection
+                    }
+                    .padding(.horizontal, DQSpace.gutter)
+                    .padding(.top, DQSpace.safeTop)
+                    .padding(.bottom, DQSpace.gutter)
                 }
-                .padding(.horizontal, DQ.Spacing.xl)
-                .padding(.vertical, DQ.Spacing.lg)
+                .toolbar(.hidden, for: .navigationBar)
             }
-            .dqBackground(heroGlow: true)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text("Settings")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(DQ.Colors.textPrimary)
-                }
-            }
+            .ignoresSafeArea(edges: .top)
             .sheet(isPresented: $showAddZone) {
                 AddPauseZoneView { zone in
                     autoZones.append(zone)
                     locationService.configureAutoPauseZones(autoZones)
+                }
+            }
+            .sheet(isPresented: $showDeleteAccountConfirm) {
+                DQConfirmSheet(
+                    title: "Delete Account",
+                    message: "This action is permanent and cannot be undone.",
+                    confirmTitle: "Delete"
+                ) {
+                    Task { await authViewModel.deleteAccount() }
                 }
             }
             .onAppear {
@@ -61,87 +83,16 @@ struct SettingsView: View {
                     globalPauseEnabled = !matchManager.isQuestModeActive
                 }
             }
-            .alert("Delete Account", isPresented: $showDeleteAccountAlert) {
-                Button("Delete", role: .destructive) {
-                    Task { await authViewModel.deleteAccount() }
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("This action is permanent and cannot be undone.")
-            }
         }
     }
 
-    // MARK: - Section Container
-
-    private func settingsSection(title: String, @ViewBuilder content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: DQ.Spacing.lg) {
-            Text(title.uppercased())
-                .font(DQ.Typography.sectionLabel())
-                .foregroundStyle(DQ.Colors.textQuaternary)
-                .tracking(1)
-                .padding(.leading, DQ.Spacing.xxxs)
-
-            VStack(spacing: 1) {
-                content()
-            }
-            .background(DQ.Colors.surfaceCard)
-            .clipShape(RoundedRectangle(cornerRadius: DQ.Radii.large))
-            .overlay(
-                RoundedRectangle(cornerRadius: DQ.Radii.large)
-                    .stroke(Color.white.opacity(0.06), lineWidth: 1)
-            )
-        }
-    }
-
-    // MARK: - Row Helpers
-
-    private func settingsRow<Content: View>(
-        icon: String,
-        iconColor: Color = DQ.Colors.accent,
-        title: String,
-        @ViewBuilder trailing: () -> Content
-    ) -> some View {
-        HStack(spacing: DQ.Spacing.md) {
-            ZStack {
-                RoundedRectangle(cornerRadius: DQ.Radii.small)
-                    .fill(iconColor.opacity(0.15))
-                    .frame(width: 32, height: 32)
-                Image(systemName: icon)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(iconColor)
-            }
-            Text(title)
-                .font(DQ.Typography.settingTitle())
-                .foregroundStyle(DQ.Colors.textPrimary)
-            Spacer()
-            trailing()
-        }
-        .padding(.horizontal, DQ.Spacing.lg)
-        .padding(.vertical, DQ.Spacing.md)
-        .background(DQ.Colors.surfaceCard)
-    }
-
-    private func settingsNavRow(icon: String, iconColor: Color = DQ.Colors.accent, title: String, destination: some View) -> some View {
-        NavigationLink {
-            destination
-        } label: {
-            settingsRow(icon: icon, iconColor: iconColor, title: title) {
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(DQ.Colors.textQuaternary)
-            }
-        }
-    }
-
-    // MARK: - Quest Mode Section
+    // MARK: - Quest Mode
 
     private var questSection: some View {
-        settingsSection(title: "Quest Mode") {
-            settingsRow(icon: "location.north.circle.fill", iconColor: DQ.Colors.accent, title: "Quest Mode") {
-                Toggle("", isOn: $questEnabled)
-                    .labelsHidden()
-                    .tint(DQ.Colors.accent)
+        VStack(spacing: 0) {
+            DQSectionHeader(title: "Quest Mode")
+            DQGroup {
+                DQToggleRow(label: "Quest Mode", isOn: $questEnabled)
                     .onChange(of: questEnabled) { _, val in
                         if val, let user = authViewModel.currentUser {
                             matchManager.enableQuestMode(for: user)
@@ -149,300 +100,239 @@ struct SettingsView: View {
                             matchManager.disableQuestMode()
                         }
                     }
-                    .accessibilityLabel("Quest Mode")
-            }
 
-            Divider().opacity(0.1)
-
-            settingsRow(icon: "bell.badge.fill", iconColor: DQ.Colors.warning, title: "Hourly Alert Limit") {
-                let maxCap = balanceEnforcer.calculateAlertCap(for: authViewModel.currentUser?.gender ?? .preferNotToSay)
-                HStack(spacing: DQ.Spacing.md) {
-                    Button {
-                        if alertLimit > 1 { alertLimit -= 1 }
-                    } label: {
-                        Image(systemName: "minus")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(DQ.Colors.textSecondary)
-                            .frame(width: 28, height: 28)
-                            .background(DQ.Colors.surfaceElevated)
-                            .clipShape(Circle())
-                    }
-                    .accessibilityLabel("Decrease alert limit")
-
-                    Text("\(alertLimit)")
-                        .font(DQ.Typography.bodyBold())
-                        .foregroundStyle(DQ.Colors.textPrimary)
-                        .frame(minWidth: 24)
-
-                    Button {
-                        if alertLimit < maxCap { alertLimit += 1 }
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundStyle(DQ.Colors.textSecondary)
-                            .frame(width: 28, height: 28)
-                            .background(DQ.Colors.surfaceElevated)
-                            .clipShape(Circle())
-                    }
-                    .accessibilityLabel("Increase alert limit")
-                }
+                DQStepperRow(
+                    label: "Hourly alert limit",
+                    value: $alertLimit,
+                    range: 1...alertCap
+                )
             }
         }
     }
 
-    // MARK: - Balance & Safety Section
+    // MARK: - Balance & Safety
 
     private var balanceAndSafetySection: some View {
-        settingsSection(title: "Balance & Safety") {
-            // Global Pause Toggle
-            settingsRow(icon: "pause.circle.fill", iconColor: DQ.Colors.warning, title: "Global Pause") {
-                Toggle("", isOn: $globalPauseEnabled)
-                    .labelsHidden()
-                    .tint(DQ.Colors.warning)
-                    .onChange(of: globalPauseEnabled) { _, paused in
-                        if paused {
-                            matchManager.disableQuestMode()
-                        } else if let user = authViewModel.currentUser {
-                            matchManager.enableQuestMode(for: user)
-                        }
-                    }
-                    .accessibilityLabel("Global pause")
-                    .accessibilityHint("Pauses all quest scanning and alerts")
-            }
-
-            Divider().opacity(0.1)
-
-            // Gender Balance Status
-            settingsRow(icon: "scale.3d", iconColor: DQ.Colors.accentPink, title: "Balance Status") {
-                HStack(spacing: DQ.Spacing.xs) {
-                    if balanceEnforcer.needsFemaleBoost {
-                        Text("Balancing")
-                            .font(DQ.Typography.caption().bold())
-                            .foregroundStyle(DQ.Colors.accentPink)
-                            .padding(.horizontal, DQ.Spacing.sm)
-                            .padding(.vertical, DQ.Spacing.xxxs)
-                            .background(DQ.Colors.accentPink.opacity(0.15))
-                            .clipShape(Capsule())
-                    } else {
-                        Text("Balanced")
-                            .font(DQ.Typography.caption().bold())
-                            .foregroundStyle(DQ.Colors.success)
-                            .padding(.horizontal, DQ.Spacing.sm)
-                            .padding(.vertical, DQ.Spacing.xxxs)
-                            .background(DQ.Colors.success.opacity(0.15))
-                            .clipShape(Capsule())
+        let verification = authViewModel.currentUser?.verificationStatus ?? .unverified
+        return VStack(spacing: 0) {
+            DQSectionHeader(title: "Balance & Safety")
+            DQGroup {
+                DQToggleRow(
+                    label: "Global pause",
+                    sublabel: "Pauses all quest scanning and alerts",
+                    isOn: $globalPauseEnabled
+                )
+                .onChange(of: globalPauseEnabled) { _, paused in
+                    if paused {
+                        matchManager.disableQuestMode()
+                    } else if let user = authViewModel.currentUser {
+                        matchManager.enableQuestMode(for: user)
                     }
                 }
-            }
 
-            Divider().opacity(0.1)
+                DQRow(label: "Balance status") {
+                    DQChip(text: balanceEnforcer.needsFemaleBoost ? "Balancing" : "Balanced")
+                }
 
-            // Verification Status + Get Verified
-            let verificationStatus = authViewModel.currentUser?.verificationStatus ?? .unverified
-            settingsRow(
-                icon: "checkmark.shield.fill",
-                iconColor: verificationStatus == .verified ? DQ.Colors.success : DQ.Colors.textTertiary,
-                title: "Verification"
-            ) {
-                if verificationStatus == .verified {
-                    Text("Verified")
-                        .font(DQ.Typography.caption().bold())
-                        .foregroundStyle(DQ.Colors.success)
-                        .padding(.horizontal, DQ.Spacing.sm)
-                        .padding(.vertical, DQ.Spacing.xxxs)
-                        .background(DQ.Colors.success.opacity(0.15))
-                        .clipShape(Capsule())
+                if verification == .verified {
+                    DQRow(label: "Verification") {
+                        DQChip(text: "Verified")
+                    }
                 } else {
                     NavigationLink {
-                        Text("Verification coming soon")
-                            .font(DQ.Typography.body())
-                            .foregroundStyle(DQ.Colors.textSecondary)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .dqBackground()
+                        verificationPlaceholder
                     } label: {
-                        Text("Get Verified")
-                            .font(DQ.Typography.caption().bold())
-                            .foregroundStyle(DQ.Colors.accent)
-                            .padding(.horizontal, DQ.Spacing.sm)
-                            .padding(.vertical, DQ.Spacing.xxxs)
-                            .background(DQ.Colors.accent.opacity(0.15))
-                            .clipShape(Capsule())
-                    }
-                }
-            }
-
-            Divider().opacity(0.1)
-
-            // Vibe Tags
-            VStack(alignment: .leading, spacing: DQ.Spacing.sm) {
-                settingsRow(icon: "sparkles", iconColor: DQ.Colors.accentOrange, title: "My Vibes") {
-                    Text("\(selectedVibes.count) selected")
-                        .font(DQ.Typography.caption())
-                        .foregroundStyle(DQ.Colors.textQuaternary)
-                }
-
-                let allVibes = [
-                    "Chill hangout", "Deep conversation", "Adventure buddy",
-                    "Coffee date", "Group outing", "Creative collab",
-                    "Workout partner", "Foodie crawl", "Night out",
-                    "Study buddy", "Dog walk", "Just vibing"
-                ]
-
-                FlowLayout {
-                    ForEach(allVibes, id: \.self) { vibe in
-                        ChipToggle(label: vibe, isOn: selectedVibes.contains(vibe)) {
-                            if selectedVibes.contains(vibe) {
-                                selectedVibes.remove(vibe)
-                            } else {
-                                selectedVibes.insert(vibe)
-                            }
+                        DQRow(label: "Verification", sublabel: "Not yet verified") {
+                            chevron
                         }
                     }
+                    .buttonStyle(.plain)
                 }
-                .padding(.horizontal, DQ.Spacing.lg)
-                .padding(.bottom, DQ.Spacing.md)
+
+                vibesBlock
             }
         }
     }
 
-    // MARK: - Privacy Section
+    private var vibesBlock: some View {
+        VStack(alignment: .leading, spacing: DQSpace.tight) {
+            HStack {
+                Text("My vibes")
+                    .font(DQFont.uiSized(14, .semibold))
+                    .foregroundStyle(p.text)
+                Spacer(minLength: 0)
+                Text("\(selectedVibes.count)")
+                    .font(DQFont.monoSized(13, .medium))
+                    .foregroundStyle(p.text2)
+            }
+
+            FlowLayout(spacing: 7) {
+                ForEach(allVibes, id: \.self) { vibe in
+                    Button {
+                        if selectedVibes.contains(vibe) {
+                            selectedVibes.remove(vibe)
+                        } else {
+                            selectedVibes.insert(vibe)
+                        }
+                    } label: {
+                        DQChip(text: vibe, selected: selectedVibes.contains(vibe))
+                            .frame(minHeight: DQSize.minHitTarget)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(vibe)
+                    .accessibilityAddTraits(
+                        selectedVibes.contains(vibe) ? [.isButton, .isSelected] : .isButton
+                    )
+                }
+            }
+        }
+        .padding(.vertical, DQFormMetrics.rowVPad)
+        .padding(.horizontal, DQFormMetrics.inset)
+    }
+
+    // MARK: - Privacy
 
     private var privacySection: some View {
-        settingsSection(title: "Privacy") {
-            settingsRow(icon: "location.slash.fill", iconColor: DQ.Colors.info, title: "Location Mode") {
-                Picker("", selection: $locationMode) {
-                    Text("Anonymized").tag(PrivacySettings.LocationSharingMode.anonymized)
-                    Text("Hidden").tag(PrivacySettings.LocationSharingMode.hidden)
+        VStack(spacing: 0) {
+            DQSectionHeader(title: "Privacy")
+            DQGroup {
+                DQToggleRow(label: "Community events", isOn: $showCommunityEvents)
+
+                NavigationLink {
+                    DataRightsView()
+                } label: {
+                    DQRow(label: "Data rights", sublabel: "GDPR / CCPA") { chevron }
                 }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 200)
+                .buttonStyle(.plain)
             }
 
-            Divider().opacity(0.1)
+            // Segmented pickers stand alone, never inside a group.
+            VStack(alignment: .leading, spacing: 7) {
+                Text("Location mode")
+                    .font(DQFont.labelSized(9.5, .semibold))
+                    .tracking(DQFont.track(9.5, em: 0.16))
+                    .textCase(.uppercase)
+                    .foregroundStyle(p.text2)
+                    .padding(.leading, DQFormMetrics.inset)
 
-            settingsRow(icon: "person.3.fill", iconColor: DQ.Colors.accentPink, title: "Community Events") {
-                Toggle("", isOn: $showCommunityEvents)
-                    .labelsHidden()
-                    .tint(DQ.Colors.accent)
-                    .accessibilityLabel("Show in community events")
+                DQSegmentedPicker(
+                    options: [PrivacySettings.LocationSharingMode.anonymized, .hidden],
+                    title: { $0 == .anonymized ? "Anonymized" : "Hidden" },
+                    selection: $locationMode
+                )
             }
-
-            Divider().opacity(0.1)
-
-            settingsNavRow(
-                icon: "doc.text.fill",
-                iconColor: DQ.Colors.textTertiary,
-                title: "Data Rights (GDPR/CCPA)",
-                destination: DataRightsView()
-            )
+            .padding(.top, DQSpace.gutter)
         }
     }
 
-    // MARK: - Auto-Pause Section
+    // MARK: - Auto-Pause Zones
 
     private var autoPauseSection: some View {
-        settingsSection(title: "Auto-Pause Zones") {
-            ForEach(autoZones) { zone in
-                VStack(spacing: 0) {
-                    settingsRow(icon: "mappin.circle.fill", iconColor: DQ.Colors.accentOrange, title: zone.label) {
-                        HStack(spacing: DQ.Spacing.xs) {
-                            Text("\(Int(zone.radiusMeters))m")
-                                .font(DQ.Typography.caption())
-                                .foregroundStyle(DQ.Colors.textQuaternary)
+        VStack(spacing: 0) {
+            DQSectionHeader(title: "Auto-Pause Zones")
+            DQGroup {
+                ForEach(autoZones) { zone in
+                    DQRow(label: zone.label) {
+                        HStack(spacing: DQSpace.tight) {
+                            Text("\(Int(zone.radiusMeters)) m")
+                                .font(DQFont.monoSized(13, .medium))
+                                .foregroundStyle(p.text2)
                             Toggle("", isOn: Binding(
                                 get: { zone.isActive },
                                 set: { _ in /* update zone */ }
                             ))
                             .labelsHidden()
-                            .tint(DQ.Colors.accent)
+                            .tint(p.ember)
+                            .fixedSize()
                         }
                     }
                     .accessibilityElement(children: .combine)
                     .accessibilityLabel("\(zone.label) pause zone, radius \(Int(zone.radiusMeters)) meters")
-                    Divider().opacity(0.1)
                 }
-            }
 
-            Button {
-                showAddZone = true
-            } label: {
-                HStack(spacing: DQ.Spacing.md) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: DQ.Radii.small)
-                            .fill(DQ.Colors.accent.opacity(0.15))
-                            .frame(width: 32, height: 32)
-                        Image(systemName: "plus")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(DQ.Colors.accent)
-                    }
-                    Text("Add Zone")
-                        .font(DQ.Typography.settingTitle())
-                        .foregroundStyle(DQ.Colors.accent)
-                    Spacer()
+                Button { showAddZone = true } label: {
+                    DQRow(label: "Add zone") { chevron }
                 }
-                .padding(.horizontal, DQ.Spacing.lg)
-                .padding(.vertical, DQ.Spacing.md)
-                .background(DQ.Colors.surfaceCard)
+                .buttonStyle(.plain)
             }
+            DQFootnote(text: "Quest Mode switches off automatically inside these areas.")
         }
     }
 
-    // MARK: - Safety Section
+    // MARK: - Safety
 
     private var safetySection: some View {
-        settingsSection(title: "Safety") {
-            settingsNavRow(
-                icon: "exclamationmark.bubble.fill",
-                iconColor: DQ.Colors.error,
-                title: "Report a User",
-                destination: ReportUserView(reportedUID: matchManager.nearbyMatchProfile?.uid ?? "")
-            )
-            Divider().opacity(0.1)
-            settingsNavRow(
-                icon: "hand.raised.slash.fill",
-                iconColor: DQ.Colors.warning,
-                title: "Block List",
-                destination: Text("Coming soon")
-                    .font(DQ.Typography.body())
-                    .foregroundStyle(DQ.Colors.textSecondary)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .dqBackground()
-            )
-            Divider().opacity(0.1)
+        let trust = authViewModel.currentUser?.trustLevel ?? .bronze
+        return VStack(spacing: 0) {
+            DQSectionHeader(title: "Safety")
+            DQGroup {
+                NavigationLink {
+                    ReportUserView(reportedUID: matchManager.nearbyMatchProfile?.uid ?? "")
+                } label: {
+                    DQRow(label: "Report a user") { chevron }
+                }
+                .buttonStyle(.plain)
 
-            // Verification / Trust Level
-            let trust = authViewModel.currentUser?.trustLevel ?? .bronze
-            settingsRow(
-                icon: "shield.fill",
-                iconColor: DQ.Colors.trustColor(for: trust),
-                title: "Trust Level"
-            ) {
-                TrustBadgeView(trustLevel: trust, size: .medium)
+                NavigationLink {
+                    comingSoonPlaceholder
+                } label: {
+                    DQRow(label: "Block list") { chevron }
+                }
+                .buttonStyle(.plain)
+
+                DQRow(label: "Trust level") {
+                    TrustChip(tier: trust)
+                }
             }
         }
     }
 
-    // MARK: - Account Section
+    // MARK: - Account
 
     private var accountSection: some View {
-        settingsSection(title: "Account") {
-            Button {
-                authViewModel.signOut()
-            } label: {
-                settingsRow(icon: "arrow.right.square.fill", iconColor: DQ.Colors.textTertiary, title: "Sign Out") {
-                    EmptyView()
+        VStack(spacing: 0) {
+            DQSectionHeader(title: "Account")
+            DQGroup {
+                Button { authViewModel.signOut() } label: {
+                    DQRow(label: "Sign out") { chevron }
+                }
+                .buttonStyle(.plain)
+
+                // §8 / rule 4: destructive actions read as `danger` ink on the
+                // row label. The filled danger pill lives only in the confirm
+                // step, never here.
+                DQDangerRow(
+                    label: "Delete account",
+                    sublabel: "Permanent and cannot be undone"
+                ) {
+                    showDeleteAccountConfirm = true
                 }
             }
-            Divider().opacity(0.1)
-            Button {
-                showDeleteAccountAlert = true
-            } label: {
-                settingsRow(icon: "trash.fill", iconColor: DQ.Colors.error, title: "Delete Account") {
-                    EmptyView()
-                }
-            }
-            .accessibilityHint("This action is permanent and cannot be undone")
         }
     }
-}
 
+    // MARK: - Helpers
+
+    private var chevron: some View {
+        Image(systemName: "chevron.right")
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(p.text3)
+    }
+
+    private var verificationPlaceholder: some View {
+        DQEmptyState(
+            symbol: "checkmark.shield",
+            title: "Verification coming soon",
+            message: "Identity verification opens in a later release."
+        )
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(p.bg.ignoresSafeArea())
+    }
+
+    private var comingSoonPlaceholder: some View {
+        DQEmptyState(symbol: "hand.raised", title: "Coming soon")
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(p.bg.ignoresSafeArea())
+    }
+}

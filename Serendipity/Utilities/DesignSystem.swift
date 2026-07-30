@@ -1,7 +1,23 @@
 import SwiftUI
 
-// MARK: - DQ Design System
-// Centralized design tokens for Serendipity.
+// MARK: - DQ Design System (v1 — LEGACY)
+//
+// ┌──────────────────────────────────────────────────────────────────────┐
+// │ THIS IS THE LEGACY SYSTEM. THE APP IS MID-MIGRATION.                  │
+// │                                                                      │
+// │  • v1 — this file. `enum DQ`, dark-only, purple accent, reached as    │
+// │    static constants: `DQ.Colors.accent`, `DQ.Spacing.xl`. Still used  │
+// │    by ~30 views, which is why it is still here.                      │
+// │  • v2 — Utilities/DQDesignSystem.swift. Dual-theme, ember accent,     │
+// │    read from the environment: `@Environment(\.dq)` for colour,        │
+// │    `DQRadius`/`DQSpace`/`DQSize` for geometry, `DQFont` for type.     │
+// │                                                                      │
+// │ The two names are close enough to be a trap. If you are touching a    │
+// │ view, check which system it already reads and stay in it — do not     │
+// │ mix them in one view. Migrated so far: EncounterView and the          │
+// │ components it owns. New work should target v2.                        │
+// └──────────────────────────────────────────────────────────────────────┘
+//
 // Usage: DQ.Colors.accent, DQ.Typography.screenTitle(), DQ.Spacing.xl, etc.
 
 enum DQ {

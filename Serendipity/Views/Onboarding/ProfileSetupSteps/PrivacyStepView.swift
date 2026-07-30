@@ -4,24 +4,36 @@ struct PrivacyStepView: View {
     @Binding var alertLimit: Int
     @Binding var locationMode: PrivacySettings.LocationSharingMode
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: DQ.Spacing.xxl) {
-            Text("Your location is always anonymized using geohashing \u{2014} exact coordinates are never shared.")
-                .foregroundStyle(DQ.Colors.textSecondary)
-            Stepper("Max alerts/day: \(alertLimit)", value: $alertLimit, in: 1...20)
-                .foregroundStyle(DQ.Colors.textPrimary)
-            Picker("Location Mode", selection: $locationMode) {
-                Text("Anonymized (Recommended)").tag(PrivacySettings.LocationSharingMode.anonymized)
-                Text("Hidden").tag(PrivacySettings.LocationSharingMode.hidden)
-            }
-            .pickerStyle(.segmented)
+    @Environment(\.dq) private var p
 
-            // Verification upsell
+    var body: some View {
+        VStack(alignment: .leading, spacing: DQSpace.gutter) {
+            Text("Your location is always anonymized using geohashing — exact coordinates are never shared.")
+                .font(DQFont.body)
+                .foregroundStyle(p.text2)
+                .fixedSize(horizontal: false, vertical: true)
+
+            DQGroup {
+                DQStepperRow(
+                    label: "Max alerts per day",
+                    value: $alertLimit,
+                    range: 1...20
+                )
+            }
+
+            // Segmented pickers stand alone, never inside a group.
+            VStack(alignment: .leading, spacing: 7) {
+                DQSectionHeader(title: "Location mode")
+                DQSegmentedPicker(
+                    options: [PrivacySettings.LocationSharingMode.anonymized, .hidden],
+                    title: { $0 == .anonymized ? "Anonymized" : "Hidden" },
+                    selection: $locationMode
+                )
+            }
+
             VerificationUpsellCard()
 
-            Text("You can add auto-pause zones (Home, Work) in Settings after onboarding.")
-                .font(DQ.Typography.footnote())
-                .foregroundStyle(DQ.Colors.textQuaternary)
+            DQFootnote(text: "You can add auto-pause zones (Home, Work) in Settings after onboarding.")
         }
     }
 }

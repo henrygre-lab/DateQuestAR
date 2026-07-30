@@ -6,19 +6,19 @@ struct PreferencesStepView: View {
     @Binding var prefMinAge: Int
     @Binding var prefMaxAge: Int
 
+    @Environment(\.dq) private var p
+
     let allInterests = ["Hiking", "Coffee", "Travel", "Music", "Art", "Foodie",
                         "Fitness", "Reading", "Gaming", "Yoga", "Cooking", "Dogs"]
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: DQ.Spacing.xxl) {
-                Group {
-                    Text("Relationship Type")
-                        .font(DQ.Typography.cardTitle())
-                        .foregroundStyle(DQ.Colors.textPrimary)
-                    FlowLayout {
+            VStack(alignment: .leading, spacing: DQSpace.gutter) {
+                VStack(alignment: .leading, spacing: DQSpace.tight) {
+                    DQSectionHeader(title: "Relationship type")
+                    FlowLayout(spacing: 7) {
                         ForEach(MatchPreferences.RelationshipType.allCases, id: \.self) { type in
-                            ChipToggle(label: type.rawValue, isOn: selectedRelationshipTypes.contains(type)) {
+                            chip(type.rawValue, selected: selectedRelationshipTypes.contains(type)) {
                                 if selectedRelationshipTypes.contains(type) {
                                     selectedRelationshipTypes.remove(type)
                                 } else {
@@ -28,13 +28,12 @@ struct PreferencesStepView: View {
                         }
                     }
                 }
-                Group {
-                    Text("Interests")
-                        .font(DQ.Typography.cardTitle())
-                        .foregroundStyle(DQ.Colors.textPrimary)
-                    FlowLayout {
+
+                VStack(alignment: .leading, spacing: DQSpace.tight) {
+                    DQSectionHeader(title: "Interests")
+                    FlowLayout(spacing: 7) {
                         ForEach(allInterests, id: \.self) { interest in
-                            ChipToggle(label: interest, isOn: selectedInterests.contains(interest)) {
+                            chip(interest, selected: selectedInterests.contains(interest)) {
                                 if selectedInterests.contains(interest) {
                                     selectedInterests.remove(interest)
                                 } else {
@@ -44,16 +43,34 @@ struct PreferencesStepView: View {
                         }
                     }
                 }
-                Group {
-                    Text("Age Range: \(prefMinAge)\u{2013}\(prefMaxAge)")
-                        .font(DQ.Typography.cardTitle())
-                        .foregroundStyle(DQ.Colors.textPrimary)
-                    Stepper("Min: \(prefMinAge)", value: $prefMinAge, in: 18...prefMaxAge)
-                        .foregroundStyle(DQ.Colors.textPrimary)
-                    Stepper("Max: \(prefMaxAge)", value: $prefMaxAge, in: prefMinAge...60)
-                        .foregroundStyle(DQ.Colors.textPrimary)
+
+                VStack(spacing: 0) {
+                    DQSectionHeader(title: "Age range")
+                    DQGroup {
+                        DQStepperRow(
+                            label: "Minimum",
+                            value: $prefMinAge,
+                            range: 18...prefMaxAge
+                        )
+                        DQStepperRow(
+                            label: "Maximum",
+                            value: $prefMaxAge,
+                            range: prefMinAge...60
+                        )
+                    }
                 }
             }
         }
+    }
+
+    private func chip(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            DQChip(text: title, selected: selected)
+                .frame(minHeight: DQSize.minHitTarget)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
     }
 }
