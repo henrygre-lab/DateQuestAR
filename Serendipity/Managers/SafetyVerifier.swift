@@ -139,14 +139,14 @@ final class SafetyVerifier: ObservableObject {
             // Log verification completion to analytics
             analytics.logVerificationCompleted(status: statusRaw, trustDelta: trustDelta)
 
-            print("[Safety] Verification complete: status=\(statusRaw), badge=\(badgeName ?? "none"), trustDelta=\(trustDelta)")
+            Log.safety.debug("Verification complete: status=\(statusRaw), badge=\(badgeName ?? "none"), trustDelta=\(trustDelta)")
             return badge
 
         } catch {
             // Don't expose server error details to the UI
             verificationState = .failed("Verification unavailable. Please try again later.")
             verificationBadge = .none
-            print("[Safety] Verification error: \(error.localizedDescription)")
+            Log.safety.error("Verification error: \(error.localizedDescription)")
             return .none
         }
     }
@@ -447,7 +447,7 @@ final class SafetyVerifier: ObservableObject {
                 reason: reason.rawValue,
                 details: details
             )
-            print("[Safety] Report submitted for \(reportedUID)")
+            Log.safety.debug("Report submitted for \(reportedUID)")
         } catch {
             self.errorMessage = "Failed to submit report: \(error.localizedDescription)"
         }
@@ -473,7 +473,7 @@ final class SafetyVerifier: ObservableObject {
     }
 
     static func reportUnsafeProximity(matchID: String, reason: String) async {
-        print("[SafetyVerifier] ⚠️ Unsafe proximity reported: \(reason)")
+        Log.safety.error("Unsafe proximity reported: \(reason)")
         // TODO: Firestore report + session termination + BalanceEnforcer escalation
     }
 }

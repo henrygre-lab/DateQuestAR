@@ -19,18 +19,20 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
 
         return true
     }
-    
+
     // MARK: - Firebase Setup
-    
+
     private func configureFirebase() {
-        guard let _ = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") else {
-            print("[AppDelegate] ⚠️ GoogleService-Info.plist not found. Firebase will not be initialized.")
-            print("[AppDelegate] Download it from: https://console.firebase.google.com/")
+        guard Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") != nil else {
+            Log.app.error(
+                "GoogleService-Info.plist not found — Firebase will not be initialized. "
+                + "Download it from https://console.firebase.google.com/"
+            )
             return
         }
 
         FirebaseApp.configure()
-        print("[AppDelegate] ✅ Firebase configured successfully")
+        Log.app.debug("Firebase configured successfully")
     }
 
     // MARK: - Notifications
@@ -40,9 +42,9 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
             options: [.alert, .badge, .sound]
         ) { granted, error in
             if let error = error {
-                print("[AppDelegate] Notification permission error: \(error.localizedDescription)")
+                Log.app.error("Notification permission error: \(error.localizedDescription)")
             }
-            print("[AppDelegate] Notifications granted: \(granted)")
+            Log.app.debug("Notifications granted: \(granted)")
         }
     }
 
@@ -79,18 +81,18 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
                      options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
         return GIDSignIn.sharedInstance.handle(url)
     }
-    
+
     // Modern scene-based URL handling
     func application(_ application: UIApplication,
                      configurationForConnecting connectingSceneSession: UISceneSession,
                      options: UIScene.ConnectionOptions) -> UISceneConfiguration {
         let configuration = UISceneConfiguration(name: nil, sessionRole: connectingSceneSession.role)
-        
+
         // Handle URLs through scene delegate if needed
         if let urlContext = options.urlContexts.first {
             _ = GIDSignIn.sharedInstance.handle(urlContext.url)
         }
-        
+
         return configuration
     }
 }

@@ -100,7 +100,7 @@ final class RevealManager: ObservableObject {
 
             analytics.logRevealSessionStarted(matchID: match.id)
         } catch {
-            print("[RevealManager] Failed to create session: \(error.localizedDescription)")
+            Log.reveal.error("Failed to create session: \(error.localizedDescription)")
         }
     }
 
@@ -112,7 +112,7 @@ final class RevealManager: ObservableObject {
     func updateRevealProgress(for sessionID: String, progress: Double) async {
         guard var session = sessionByID(sessionID) else { return }
         guard session.isActive() else {
-            print("[RevealManager] Session \(sessionID) has timed out")
+            Log.reveal.debug("Session \(sessionID) has timed out")
             return
         }
 
@@ -146,7 +146,7 @@ final class RevealManager: ObservableObject {
                 "revealStage": session.revealStage.rawValue
             ])
         } catch {
-            print("[RevealManager] Failed to update progress: \(error.localizedDescription)")
+            Log.reveal.error("Failed to update progress: \(error.localizedDescription)")
         }
     }
 
@@ -165,7 +165,7 @@ final class RevealManager: ObservableObject {
 
         // Only allow completion from .revealed stage (icebreaker must be done first)
         guard session.revealStage == .revealed else {
-            print("[RevealManager] Cannot complete reveal: stage is \(session.revealStage), expected .revealed")
+            Log.reveal.error("Cannot complete reveal: stage is \(session.revealStage), expected .revealed")
             return
         }
 
@@ -198,7 +198,7 @@ final class RevealManager: ObservableObject {
             // Award XP for successful NameDrop (mutual profile exchange)
             await XPManager.shared.grantNameDropXP()
         } catch {
-            print("[RevealManager] Failed to complete reveal: \(error.localizedDescription)")
+            Log.reveal.error("Failed to complete reveal: \(error.localizedDescription)")
         }
     }
 
@@ -237,7 +237,7 @@ final class RevealManager: ObservableObject {
 
             analytics.logRevealSessionEnded(matchID: matchID, finalStage: session.revealStage)
         } catch {
-            print("[RevealManager] Failed to end session: \(error.localizedDescription)")
+            Log.reveal.error("Failed to end session: \(error.localizedDescription)")
         }
     }
 

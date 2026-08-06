@@ -180,7 +180,7 @@ final class GamificationService: ObservableObject {
 
             analytics.logXPAwarded(amount: finalAmount, multiplier: multiplier, reason: reason)
         } catch {
-            print("[Gamification] XP award failed: \(error.localizedDescription)")
+            Log.gamification.error("XP award failed: \(error.localizedDescription)")
         }
     }
 
@@ -207,7 +207,7 @@ final class GamificationService: ObservableObject {
             recentBadge = badge
             analytics.logBadgeAwarded(badgeName: badge.name, trigger: trigger)
         } catch {
-            print("[Gamification] Badge award failed: \(error.localizedDescription)")
+            Log.gamification.error("Badge award failed: \(error.localizedDescription)")
         }
     }
 

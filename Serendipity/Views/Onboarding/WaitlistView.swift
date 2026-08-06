@@ -153,7 +153,7 @@ struct WaitlistView: View {
                 }
             }
         } catch {
-            print("[WaitlistView] Failed to load waitlist info: \(error.localizedDescription)")
+            Log.waitlist.error("Failed to load waitlist info: \(error.localizedDescription)")
         }
     }
 
@@ -172,7 +172,7 @@ struct WaitlistView: View {
                 }
             }
         } catch {
-            print("[WaitlistView] Status check failed: \(error.localizedDescription)")
+            Log.waitlist.error("Status check failed: \(error.localizedDescription)")
         }
     }
 

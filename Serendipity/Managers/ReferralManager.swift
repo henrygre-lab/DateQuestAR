@@ -43,7 +43,7 @@ final class ReferralManager: ObservableObject {
                 referralCount = doc.data()?["successfulReferrals"] as? Int ?? 0
             }
         } catch {
-            print("[Referral] Failed to fetch referral code: \(error.localizedDescription)")
+            Log.referral.error("Failed to fetch referral code: \(error.localizedDescription)")
         }
     }
 
@@ -102,7 +102,7 @@ final class ReferralManager: ObservableObject {
 
                 await processReferralReward(referrerUID: referrerUID, referrerGender: referrerGender)
             } catch {
-                print("[Referral] Failed to fetch referrer profile: \(error.localizedDescription)")
+                Log.referral.error("Failed to fetch referrer profile: \(error.localizedDescription)")
             }
         }
     }

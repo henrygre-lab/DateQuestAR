@@ -45,7 +45,7 @@ final class ARCoordinator: NSObject, ARSCNViewDelegate, ARSessionDelegate {
     }
 
     func session(_ session: ARSession, didFailWithError error: Error) {
-        print("[ARKit] Session failed: \(error.localizedDescription)")
+        Log.ar.error("Session failed: \(error.localizedDescription)")
     }
 
     func renderer(_ renderer: SCNSceneRenderer, nodeFor anchor: ARAnchor) -> SCNNode? {

@@ -99,7 +99,7 @@ final class MatchManager: ObservableObject {
     func enableQuestMode(for user: UserProfile) {
         guard user.privacySettings.questModeEnabled else { return }
         guard user.accountStatus == .active else {
-            print("[MatchManager] Quest mode blocked: accountStatus=\(user.accountStatus)")
+            Log.match.debug("Quest mode blocked: accountStatus=\(user.accountStatus)")
             return
         }
         activeQuestUser = user
@@ -262,14 +262,14 @@ final class MatchManager: ObservableObject {
             }
             self.activeMatches = scored
         } catch {
-            print("[MatchManager] Error fetching matches: \(error)")
+            Log.match.error("Error fetching matches: \(error)")
         }
     }
 
     /// Refresh nearby-user list on location updates. Wired into LocationService.didUpdateLocations.
     func refreshNearbyUsers() async {
         guard let geohash = LocationService.shared.currentGeohash, !geohash.isEmpty else {
-            print("[MatchManager] No current geohash yet")
+            Log.match.debug("No current geohash yet")
             return
         }
 
@@ -282,7 +282,7 @@ final class MatchManager: ObservableObject {
             // Apply safety + balance filter
             nearbyUsers = candidates.filter { balanceEnforcer.shouldShowMatch(to: $0) }
 
-            print("[MatchManager] ✅ Refreshed \(nearbyUsers.count) nearby users in geohash \(geohash)")
+            Log.match.debug("Refreshed \(nearbyUsers.count) nearby users in geohash \(geohash)")
 
             // Sort by compatibility (fallback to self if no active user)
             if let current = activeQuestUser {
@@ -293,7 +293,7 @@ final class MatchManager: ObservableObject {
             }
 
         } catch {
-            print("[MatchManager] ❌ Nearby fetch failed: \(error.localizedDescription)")
+            Log.match.error("Nearby fetch failed: \(error.localizedDescription)")
         }
     }
 
@@ -362,7 +362,7 @@ final class MatchManager: ObservableObject {
                 cap: genderCap
             )
             guard allowed == true else {
-                print("[MatchManager] Alert throttled by server-side gender cap (\(genderCap)/hr)")
+                Log.match.debug("Alert throttled by server-side gender cap (\(genderCap)/hr)")
                 self.analytics.logAlertThrottledByGender(
                     gender: currentUser.gender,
                     cap: genderCap,
@@ -505,7 +505,7 @@ final class MatchManager: ObservableObject {
                 nearbyMatchProfile = try await firestoreService.fetchUser(uid: uid)
             } catch {
                 cachedPartnerUID = nil
-                print("[MatchManager] Failed to fetch partner profile: \(error)")
+                Log.match.error("Failed to fetch partner profile: \(error)")
             }
         }
     }
@@ -539,7 +539,7 @@ final class MatchManager: ObservableObject {
         do {
             try await firestoreService.updateMatchRating(matchID: matchID, rating: rating)
         } catch {
-            print("[MatchManager] Rating submission failed: \(error)")
+            Log.match.error("Rating submission failed: \(error)")
         }
     }
 
@@ -559,7 +559,7 @@ final class MatchManager: ObservableObject {
             )
             await recalculateTrustLevel(for: partnerUID)
         } catch {
-            print("[MatchManager] Photo accuracy rating failed: \(error)")
+            Log.match.error("Photo accuracy rating failed: \(error)")
         }
     }
 
@@ -591,7 +591,7 @@ final class MatchManager: ObservableObject {
                 try await firestoreService.updateTrustLevel(uid: uid, level: level)
             }
         } catch {
-            print("[MatchManager] Trust recalculation failed: \(error)")
+            Log.match.error("Trust recalculation failed: \(error)")
         }
     }
 
@@ -643,7 +643,7 @@ final class MatchManager: ObservableObject {
         // Route reveal state through the real stage machine, minus Firestore.
         RevealManager.shared.isDemoMode = true
 
-        print("[MatchManager] Demo match: \(candidate.displayName), score=\(String(format: "%.2f", breakdown.overall)), cap=\(alertCapManager.getCurrentDailyLimit())")
+        Log.match.debug("Demo match: \(candidate.displayName), score=\(String(format: "%.2f", breakdown.overall)), cap=\(alertCapManager.getCurrentDailyLimit())")
 
         let match = Match(
             id: "demo_match_\(UUID().uuidString.prefix(8))",

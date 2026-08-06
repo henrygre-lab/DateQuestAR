@@ -107,7 +107,7 @@ final class ProximityService: NSObject, ObservableObject {
     func startUWBSession(with token: NIDiscoveryToken) {
         // Check if device supports UWB using the modern API
         guard NISession.deviceCapabilities.supportsPreciseDistanceMeasurement else {
-            print("[Proximity] UWB not supported on this device. Falling back to BLE RSSI.")
+            Log.proximity.debug("UWB not supported on this device. Falling back to BLE RSSI.")
             return
         }
         niSession = NISession()
@@ -198,12 +198,12 @@ extension ProximityService: NISessionDelegate {
     func session(_ session: NISession, didUpdate nearbyObjects: [NINearbyObject]) {
         for obj in nearbyObjects {
             guard let dist = obj.distance else { continue }
-            print("[UWB] Peer distance: \(dist)m")
+            Log.proximity.debug("Peer distance: \(dist)m")
             // TODO: Map token to UID and update activeMatches in MatchManager
         }
     }
 
     func session(_ session: NISession, didInvalidateWith error: Error) {
-        print("[UWB] Session invalidated: \(error)")
+        Log.proximity.error("Session invalidated: \(error)")
     }
 }

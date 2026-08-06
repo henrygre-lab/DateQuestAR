@@ -74,7 +74,7 @@ final class BalanceEnforcer: ObservableObject {
                 guard let self else { return }
 
                 if let error {
-                    print("[BalanceEnforcer] Stats listener error: \(error.localizedDescription)")
+                    Log.balance.error("Stats listener error: \(error.localizedDescription)")
                     // Keep last-known-good values; don't reset to defaults on transient errors
                     return
                 }
@@ -187,7 +187,7 @@ final class BalanceEnforcer: ObservableObject {
                 waitlistStatus = "none"
             }
         } catch {
-            print("[BalanceEnforcer] Waitlist sync failed: \(error.localizedDescription)")
+            Log.balance.error("Waitlist sync failed: \(error.localizedDescription)")
             // Don't change waitlistStatus on error — keep last known value
         }
     }

@@ -425,7 +425,7 @@ final class FirestoreService {
         }
 
         let newTotal = (result as? Int) ?? 0
-        print("[FirestoreService] Granted \(safeAmount) XP to \(uid.prefix(8))... reason=\(reason) total=\(newTotal)")
+        Log.firestore.debug("Granted \(safeAmount) XP to \(uid.prefix(8))... reason=\(reason) total=\(newTotal)")
         return newTotal
     }
 

@@ -21,19 +21,19 @@ import Combine
 @MainActor
 class AlertCapManager: ObservableObject {
     static let shared = AlertCapManager()
-    
+
     @Published var currentUserProfile: UserProfile?
-    
+
     private let firestoreService = FirestoreService.shared
-    
+
     // MARK: - Public API
-    
+
     /// Check if the current user can send an alert right now (uses cached profile)
     func canSendAlert() async -> Bool {
         guard var profile = currentUserProfile else { return false }
         return profile.canSendAlert()
     }
-    
+
     /// Record that an alert was sent (call after successful match alert)
     func recordAlertSent() async {
         guard var profile = currentUserProfile else { return }
@@ -41,7 +41,7 @@ class AlertCapManager: ObservableObject {
         currentUserProfile = profile
         await updateAlertFieldsInFirestore(profile)
     }
-    
+
     /// Get the user's current daily limit (for UI display)
     func getCurrentDailyLimit() -> Int {
         currentUserProfile?.currentDailyLimit ?? 30
@@ -93,7 +93,7 @@ class AlertCapManager: ObservableObject {
         // uid, since users are stored at users/{uid} so uid is a valid doc path.
         let documentID = profile.id ?? profile.uid
         guard !documentID.isEmpty else {
-            print("[AlertCapManager] Cannot sync alert count: empty document ID (profile.id and uid both unusable)")
+            Log.alertCaps.error("Cannot sync alert count: empty document ID (profile.id and uid both unusable)")
             return
         }
 
@@ -108,7 +108,7 @@ class AlertCapManager: ObservableObject {
         } catch {
             // Log a short, non-PII doc prefix to aid on-device debugging.
             let idPrefix = String(documentID.prefix(6))
-            print("[AlertCapManager] Failed to sync alert count for doc \(idPrefix)…: \(error.localizedDescription)")
+            Log.alertCaps.error("Failed to sync alert count for doc \(idPrefix)…: \(error.localizedDescription)")
             // Advisory only — Firestore Security Rules are the real enforcement
         }
     }
@@ -119,12 +119,12 @@ class AlertCapManager: ObservableObject {
     /// Resets the daily counter if the date has rolled over since the last fetch.
     func loadCurrentUserProfile(uid: String) async {
         guard !uid.isEmpty else {
-            print("[AlertCapManager] Cannot load profile: empty uid")
+            Log.alertCaps.error("Cannot load profile: empty uid")
             return
         }
         do {
             guard let profile = try await firestoreService.fetchUser(uid: uid) else {
-                print("[AlertCapManager] No profile found for uid: \(uid)")
+                Log.alertCaps.error("No profile found for uid: \(uid)")
                 return
             }
 
@@ -132,7 +132,7 @@ class AlertCapManager: ObservableObject {
             mutableProfile.resetAlertsIfNeeded()
             currentUserProfile = mutableProfile
         } catch {
-            print("[AlertCapManager] Failed to load profile: \(error.localizedDescription)")
+            Log.alertCaps.error("Failed to load profile: \(error.localizedDescription)")
         }
     }
 }

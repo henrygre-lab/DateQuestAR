@@ -55,14 +55,14 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
         locationManager.showsBackgroundLocationIndicator = true
         locationManager.startUpdatingLocation()
         locationManager.startMonitoringSignificantLocationChanges()
-        print("[LocationService] Quest scanning started.")
+        Log.location.debug("Quest scanning started.")
     }
 
     func stopQuestScanning() {
         isScanning = false
         locationManager.stopUpdatingLocation()
         stopHaptics()
-        print("[LocationService] Quest scanning stopped.")
+        Log.location.debug("Quest scanning stopped.")
     }
 
     // MARK: - Auto-Pause Zones
@@ -107,14 +107,14 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
         if autoPauseZones.contains(where: { $0.id == region.identifier }) {
             isPaused = true
             stopHaptics()
-            print("[LocationService] Auto-paused in zone: \(region.identifier)")
+            Log.location.debug("Auto-paused in zone: \(region.identifier)")
         }
     }
 
     func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
         if autoPauseZones.contains(where: { $0.id == region.identifier }) {
             isPaused = false
-            print("[LocationService] Resumed from zone: \(region.identifier)")
+            Log.location.debug("Resumed from zone: \(region.identifier)")
         }
     }
 
@@ -135,11 +135,11 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
                 try? self?.hapticEngine?.start()
             }
             hapticEngine?.stoppedHandler = { reason in
-                print("[Haptics] Engine stopped: \(reason)")
+                Log.haptics.debug("Engine stopped: \(reason)")
             }
             try hapticEngine?.start()
         } catch {
-            print("[Haptics] Engine init failed: \(error)")
+            Log.haptics.error("Engine init failed: \(error)")
         }
     }
 
@@ -157,7 +157,7 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
             hapticPlayer = try engine.makePlayer(with: pattern)
             try hapticPlayer?.start(atTime: 0)
         } catch {
-            print("[Haptics] Playback failed: \(error)")
+            Log.haptics.error("Playback failed: \(error)")
         }
     }
 

@@ -51,7 +51,7 @@ final class XPManager: ObservableObject {
     /// Call from AuthViewModel on sign-in or app launch.
     func loadCurrentUserGamification() async {
         guard let uid = Auth.auth().currentUser?.uid else {
-            print("[XPManager] No authenticated user — skipping gamification load")
+            Log.xp.debug("No authenticated user — skipping gamification load")
             return
         }
 
@@ -60,7 +60,7 @@ final class XPManager: ObservableObject {
                 currentGamification = profile.gamification
             }
         } catch {
-            print("[XPManager] Failed to load gamification: \(error.localizedDescription)")
+            Log.xp.error("Failed to load gamification: \(error.localizedDescription)")
         }
     }
 
@@ -89,7 +89,7 @@ final class XPManager: ObservableObject {
                 )
             }
         } catch {
-            print("[XPManager] Daily login failed: \(error.localizedDescription)")
+            Log.xp.error("Daily login failed: \(error.localizedDescription)")
         }
     }
 
@@ -199,7 +199,7 @@ final class XPManager: ObservableObject {
 
             analytics.logXPAwarded(amount: amount, multiplier: 1.0, reason: reason)
         } catch {
-            print("[XPManager] XP grant failed (\(reason)): \(error.localizedDescription)")
+            Log.xp.error("XP grant failed (\(reason)): \(error.localizedDescription)")
         }
     }
 }
