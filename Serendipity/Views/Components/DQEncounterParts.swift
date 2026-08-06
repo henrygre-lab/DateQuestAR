@@ -113,21 +113,24 @@ extension ButtonStyle where Self == DQPillButtonStyle {
     static var dqGhost: DQPillButtonStyle { DQPillButtonStyle(kind: .ghost) }
 }
 
-/// Icon-button chrome (§5): 38pt circle, `surface` fill, `line` border,
-/// `shadowSm`. Factored out so a `Menu` label can wear the same chrome as a
-/// `Button` without either restating it.
+/// Icon-button chrome (§5): a 38pt circle of Liquid Glass. Factored out so a
+/// `Menu` label can wear the same chrome as a `Button` without either restating
+/// it.
+///
+/// These float above whatever the screen is showing — a top bar over the
+/// encounter, a chat header over a transcript — which is exactly the layer
+/// glass is for. The material supplies the fill, the edge and the elevation the
+/// spec asked for as `surface` + `line` + `shadowSm`, and reacts to the press
+/// as well, so the three hand-rolled layers all come off.
 struct DQIconChrome: ViewModifier {
     @Environment(\.dq) private var p
-    @Environment(\.dqTheme) private var theme
 
     func body(content: Content) -> some View {
         content
             .font(.system(size: 14, weight: .semibold))
             .foregroundStyle(p.text)
             .frame(width: DQSize.iconButton, height: DQSize.iconButton)
-            .background(Circle().fill(p.surface))
-            .overlay(Circle().strokeBorder(p.line, lineWidth: 1))
-            .dqShadow(.small(theme))
+            .dqGlass(in: .circle, interactive: true)
     }
 }
 
@@ -192,12 +195,7 @@ struct GlassChip: View {
         }
         .padding(.horizontal, 13)
         .padding(.vertical, 8)
-        .background {
-            Capsule()
-                .fill(DQGlass.chipFill)
-                .background(.ultraThinMaterial, in: Capsule())
-        }
-        .overlay(Capsule().strokeBorder(DQGlass.chipBorder, lineWidth: 1))
+        .dqGlass(tint: DQGlass.chipTint)
     }
 }
 
@@ -258,12 +256,7 @@ private struct RevealMeterChrome: ViewModifier {
             content
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background {
-                    Capsule()
-                        .fill(DQGlass.meterFill)
-                        .background(.ultraThinMaterial, in: Capsule())
-                }
-                .overlay(Capsule().strokeBorder(DQGlass.meterBorder, lineWidth: 1))
+                .dqGlass(tint: DQGlass.meterTint)
         }
     }
 }

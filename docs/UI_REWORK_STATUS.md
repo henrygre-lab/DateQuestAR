@@ -6,8 +6,46 @@ one records **what is actually built**, what is deliberately deferred, and why.
 The spec wins on values. Where the code departs from it, the reason is recorded
 here and in a comment at the call site.
 
-_Last updated: 2026-07-29. Verified building for the iOS 26.2 simulator on that
+_Last updated: 2026-08-05. Verified building against the iOS 26.5 SDK on that
 date; still never run — see §6._
+
+---
+
+## 0. Liquid Glass
+
+The app deploys to iOS 26.2, so the frosted surfaces the spec described in CSS
+terms are now the platform material. `dqGlass` in `DQDesignSystem.swift` wraps
+`.glassEffect` so tints stay tokens; `DQGlass` holds those tints.
+
+**Adopted** — everything that floats above content:
+
+| Surface | Was | Now |
+|---|---|---|
+| `GlassChip` | `.ultraThinMaterial` under a white fill + 1pt border | glass tinted `chipTint`, no border |
+| `RevealMeter` (over photo) | same hand-rolled stack | glass tinted `meterTint`, no border |
+| `DQIconChrome` / `DQIconButton` | `surface` fill + `line` border + `shadowSm` | interactive glass circle |
+| `FloatingTabBar` | `nav` fill capsule | glass tinted `DQGlass.nav`, active pill now slides |
+| `ConnectedChatView` composer | `surface2` capsule + border | glass |
+| `RadarView` HUD chrome | 6%-white chips, a glyph with a drop shadow | glass over the camera feed |
+| `LivenessCheckView` cancel | 50%-black disc | glass over the camera feed |
+| `HomeView` scroll | — | `.scrollEdgeEffectStyle(.soft, for: .bottom)` under the tab bar |
+
+**Deliberately not adopted.** Glass is the layer above content; content stays
+opaque. So: no glass on QuestCard, SignalCard, DemoControl, `DQGroup`/`DQRow`,
+fields, the SafetySheet, the `DQBlockingSave` card, or the reveal hero. And no
+`.glass` / `.glassProminent` button styles — the ember commit pill is supposed
+to be the loudest thing on its screen, and a translucent one is a weaker CTA,
+not a more modern one.
+
+`SafetySheetView` keeps its explicit `bg` background rather than falling through
+to the system's glass sheet material, because the theme is pinned dark (§1)
+while the OS may be in light mode — the system material would follow the OS and
+render that one sheet light inside a dark app.
+
+Two call sites deliberately reach for `.glassEffect` directly instead of
+`dqGlass`: `RadarView` and `LivenessCheckView` are still v1 surfaces, and the
+no-mixing rule below means they must not pull in a v2 utility. The material is a
+SwiftUI API, not a token, so using it there breaks nothing.
 
 ---
 
@@ -180,6 +218,14 @@ reachable yet**:
   by eye. From the forms wave, add: `DQStepDots`' width animation across a
   seven-step flow, the `dqBlockingSave` overlay's 400ms floor and 8s copy swap,
   and `DQConfirmSheet`'s detent.
+- **The glass has not been looked at either**, and it is the kind of change that
+  can only be judged on a device. Worth a specific eye when one is available:
+  whether `chipTint` at 16% white still holds a legible chip over the *lightest*
+  part of a blurred photo, since the material is doing work the painted fill
+  used to do outright; whether the tab bar's `nav` tint at 0.55 reads as chrome
+  rather than as a grey smear; and whether the icon buttons, having lost
+  `shadowSm`, still separate from a busy encounter background. All three are
+  one-token fixes if they are wrong, which is why they were made tokens.
 - **Three form components are built but unused.** `DQAuthButton` lands with
   `OnboardingView`, `DQSkeleton` with the first real loading state, and
   `DQSliderRow` has no caller yet. They are specced and implemented, but nothing
@@ -202,7 +248,7 @@ The forms wave is done — `SettingsView`, `ProfileSetupView` and the three
 smaller Settings screens moved onto `DQFormParts`. What is left is the
 auth/liveness tree, the two un-specced HUD-ish screens, and the v1 components.
 
-Roughly by cost: `RadarView` (321 lines), `LivenessCheckView` (239),
+Roughly by cost: `RadarView` (330 lines), `LivenessCheckView` (242),
 `WaitlistView` (189), `OnboardingView` (155), `PostMeetRatingView` (124),
 `NameDropInstructionView` (62), `StatsView` (51), `SplashView` (49), `RootView`
 (one token), then the eight v1 components.
@@ -249,7 +295,12 @@ Still open:
    also sits directly under §8's no-place-names rule: a distance ring is a
    spatial fact and needs the same scrutiny the signal cards got.
 2. **Camera overlay.** `LivenessCheckView` puts text and controls over a live
-   camera feed. The scrim rule (§5) is specified for still photos.
+   camera feed. The scrim rule (§5) is specified for still photos. Half-answered:
+   §8 now rules that *controls* over a camera feed take glass, and the cancel
+   button and the Radar HUD chips have moved onto it. What is still unruled is
+   the **prompt text**, which currently relies on the view's own 60%-black
+   overlay-with-cutout. That overlay is doing a job the spec never described, and
+   it is what a Radar migration would have to decide about too.
 3. **OAuth brand marks.** §8 rules that provider colour is confined to the glyph,
    which settles the button; what it does not settle is whether Google's and
    Apple's brand guidelines accept a ghost pill with a coloured glyph. That is a

@@ -34,6 +34,10 @@ struct LivenessCheckView: View {
             VStack(spacing: DQ.Spacing.xxl) {
                 // Cancel button
                 HStack {
+                    // Glass rather than a flat 50%-black disc: the button sits
+                    // over a live camera feed, and a fixed black fill either
+                    // disappears against a dark room or blocks the frame the
+                    // user is trying to line their face up in.
                     Button {
                         onComplete(nil)
                     } label: {
@@ -41,8 +45,7 @@ struct LivenessCheckView: View {
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(DQ.Colors.textSecondary)
                             .frame(width: 36, height: 36)
-                            .background(Color.black.opacity(0.5))
-                            .clipShape(Circle())
+                            .glassEffect(.regular.interactive(), in: .circle)
                     }
                     .accessibilityLabel("Cancel liveness check")
                     .padding(.leading, DQ.Spacing.lg)

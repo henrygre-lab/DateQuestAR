@@ -6,17 +6,15 @@
 //  │                                                                      │
 //  │  • v1 — `enum DQ` in Utilities/DesignSystem.swift. Legacy. Dark-only, │
 //  │    purple accent, static namespaced constants (`DQ.Colors.accent`).   │
-//  │    Still used by ~30 views.                                          │
+//  │    Still read by 17 files.                                           │
 //  │  • v2 — this file. Dual-theme, ember accent, read from the            │
 //  │    environment: `@Environment(\.dq)` for colour, `DQRadius`/`DQSpace`/ │
 //  │    `DQSize` for geometry, `DQFont` for type.                          │
 //  │                                                                      │
 //  │ The two names are close enough to be a trap. If you are touching a    │
 //  │ view, check which system it already reads and stay in it — do not     │
-//  │ mix them in one view. Migrated so far: EncounterView and the          │
-//  │ components it owns (StageStepper, RevealHero, VibeScoreBreakdown,     │
-//  │ TierUpgradeBanner, DQEncounterParts). Everything else is still v1     │
-//  │ and moves in a later pass.                                           │
+//  │ mix them in one view. docs/UI_REWORK_STATUS.md §1 lists what has      │
+//  │ moved; everything else moves in a later pass.                         │
 //  └──────────────────────────────────────────────────────────────────────┘
 //
 //  Dual-theme token layer. Views must read `DQ.<token>` from the environment
@@ -92,11 +90,14 @@ public struct DQPalette: Sendable {
 // theme-invariant, and so views never spell out a raw white opacity.
 
 public enum DQGlass {
-    /// GlassChip / over-photo RevealMeter fills and borders (§5).
-    public static let chipFill = Color.white.opacity(0.16)
-    public static let chipBorder = Color.white.opacity(0.24)
-    public static let meterFill = Color.white.opacity(0.14)
-    public static let meterBorder = Color.white.opacity(0.20)
+    /// Tints for `dqGlass`. §5 specifies the over-imagery material as
+    /// `rgba(255,255,255,0.16)` + `backdrop-blur(14)`; on Liquid Glass the blur
+    /// comes from the material itself, so only the white lands, as a tint.
+    public static let chipTint = Color.white.opacity(0.16)
+    public static let meterTint = Color.white.opacity(0.14)
+
+    /// Track behind the over-photo RevealMeter fill. Still painted, not tinted —
+    /// it is a bar inside the glass pill, not the pill itself.
     public static let meterTrack = Color.white.opacity(0.24)
 
     /// Ink on glass.
@@ -106,6 +107,45 @@ public enum DQGlass {
 
     /// Radar pulse rings (§7).
     public static let pulse = Color.white.opacity(0.85)
+
+    /// Glass tint for the floating tab bar. `nav` is near-opaque by design —
+    /// used raw it would cancel the material out — so the same hue lands at a
+    /// strength the glass can actually carry. Tinting rather than dropping the
+    /// token keeps the bar reading as dark chrome in *both* palettes; untinted,
+    /// a light theme would put `navInk` grey on light glass.
+    public static func nav(_ p: DQPalette) -> Color { p.nav.opacity(0.55) }
+}
+
+// MARK: - Liquid Glass
+//
+// Liquid Glass belongs to the layer *above* content: controls, navigation
+// chrome, and anything floating over a photo or a camera feed. Content itself —
+// cards, rows, panels, sheets — stays on the opaque `surface` tokens. A screen
+// where everything is glass has nothing left for glass to float above, and the
+// reveal hero in particular has to stay the brightest thing on screen.
+//
+// Reduce Transparency and Increase Contrast are handled by the material itself;
+// nothing here needs to branch on them. The material also draws its own
+// specular edge, which is why every call site below drops the 1pt border the
+// hand-rolled version needed.
+
+public extension View {
+    /// Applies Liquid Glass with the app's tokens.
+    ///
+    /// - Parameters:
+    ///   - shape: The glass shape. Defaults to a capsule — `DQRadius.pill`
+    ///     expressed natively, so it cannot drift from the token.
+    ///   - tint: An optional wash over the material. Over imagery this carries
+    ///     the §5 white; over chrome it carries `nav`.
+    ///   - interactive: Whether the glass reacts to touch. On for anything the
+    ///     user can press, off for passive chrome.
+    func dqGlass(
+        in shape: some Shape = Capsule(),
+        tint: Color? = nil,
+        interactive: Bool = false
+    ) -> some View {
+        glassEffect(.regular.tint(tint).interactive(interactive), in: shape)
+    }
 }
 
 public enum DQScrim {
@@ -298,6 +338,9 @@ public enum DQMotion {
     /// Button press.
     public static let press: Animation = .easeOut(duration: 0.12)
     public static let pressScale: CGFloat = 0.97
+    /// Tab-bar selection slide. Springy rather than eased: the pill is moving
+    /// through a glass bar, and a linear slide reads as a swap instead.
+    public static let tabSelect: Animation = .smooth(duration: 0.32)
 }
 
 // MARK: - Reveal ladder

@@ -91,6 +91,10 @@ struct HomeView: View {
                 .padding(.top, DQSpace.safeTop)
                 .padding(.bottom, DQSpace.gutter)
             }
+            // Signal cards pass under the glass tab bar. The soft edge fades
+            // them into it instead of letting a hard card corner cut across the
+            // material.
+            .scrollEdgeEffectStyle(.soft, for: .bottom)
         }
         // §3: the 58 is measured from the physical top edge.
         .ignoresSafeArea(edges: .top)

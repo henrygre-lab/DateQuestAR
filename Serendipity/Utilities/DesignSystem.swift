@@ -6,16 +6,16 @@ import SwiftUI
 // │ THIS IS THE LEGACY SYSTEM. THE APP IS MID-MIGRATION.                  │
 // │                                                                      │
 // │  • v1 — this file. `enum DQ`, dark-only, purple accent, reached as    │
-// │    static constants: `DQ.Colors.accent`, `DQ.Spacing.xl`. Still used  │
-// │    by ~30 views, which is why it is still here.                      │
+// │    static constants: `DQ.Colors.accent`, `DQ.Spacing.xl`. Still read  │
+// │    by 17 files, which is why it is still here.                       │
 // │  • v2 — Utilities/DQDesignSystem.swift. Dual-theme, ember accent,     │
 // │    read from the environment: `@Environment(\.dq)` for colour,        │
 // │    `DQRadius`/`DQSpace`/`DQSize` for geometry, `DQFont` for type.     │
 // │                                                                      │
 // │ The two names are close enough to be a trap. If you are touching a    │
 // │ view, check which system it already reads and stay in it — do not     │
-// │ mix them in one view. Migrated so far: EncounterView and the          │
-// │ components it owns. New work should target v2.                        │
+// │ mix them in one view. docs/UI_REWORK_STATUS.md §1 lists what has      │
+// │ moved. New work should target v2.                                     │
 // └──────────────────────────────────────────────────────────────────────┘
 //
 // Usage: DQ.Colors.accent, DQ.Typography.screenTitle(), DQ.Spacing.xl, etc.

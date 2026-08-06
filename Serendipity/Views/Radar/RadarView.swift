@@ -128,11 +128,16 @@ struct RadarView: View {
     private var topBar: some View {
         VStack(spacing: DQ.Spacing.sm) {
             HStack {
+                // Liquid Glass rather than a bare glyph with a drop shadow: this
+                // floats over a live camera feed, where a shadow is the only
+                // thing separating white-on-white and it stops working the
+                // moment the user points the phone at something bright.
                 Button { dismiss() } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title2)
+                    Image(systemName: "xmark")
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(DQ.Colors.textPrimary)
-                        .shadow(color: .black.opacity(0.4), radius: 4)
+                        .frame(width: 38, height: 38)
+                        .glassEffect(.regular.interactive(), in: .circle)
                 }
                 .accessibilityLabel("Close radar")
                 Spacer()
@@ -171,8 +176,13 @@ struct RadarView: View {
                     .foregroundStyle(squadRadarOn ? DQ.Colors.accent : DQ.Colors.textQuaternary)
                     .padding(.horizontal, DQ.Spacing.sm)
                     .padding(.vertical, DQ.Spacing.xxxs)
-                    .background(squadRadarOn ? DQ.Colors.accent.opacity(0.2) : DQ.Colors.surfaceElevated.opacity(0.6))
-                    .clipShape(Capsule())
+                    // The off state was a 6%-white fill, which over a camera
+                    // feed is no fill at all. Glass gives the chip a body in
+                    // both states; the accent tint is what marks it on.
+                    .glassEffect(
+                        .regular.tint(squadRadarOn ? DQ.Colors.accentSubtle : nil).interactive(),
+                        in: .capsule
+                    )
                 }
                 .accessibilityLabel("Squad radar mode")
                 .accessibilityValue(squadRadarOn ? "on" : "off")
@@ -190,8 +200,7 @@ struct RadarView: View {
                     .foregroundStyle(DQ.Colors.accentPink)
                     .padding(.horizontal, DQ.Spacing.sm)
                     .padding(.vertical, DQ.Spacing.xxxs)
-                    .background(DQ.Colors.accentPink.opacity(0.15))
-                    .clipShape(Capsule())
+                    .glassEffect(.regular.tint(DQ.Colors.accentPink.opacity(0.15)), in: .capsule)
                     .accessibilityLabel("Gender balance mode active")
                 }
             }

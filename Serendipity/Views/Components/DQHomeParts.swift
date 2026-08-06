@@ -245,8 +245,18 @@ struct SignalCard: View {
     }
 }
 
-/// §5 FloatingTabBar. Pill of `nav` fill sitting below the content, items at
+/// §5 FloatingTabBar. A Liquid Glass pill sitting below the content, items at
 /// 56×44, the active one a `navActive` pill.
+///
+/// The bar is the app's clearest case for glass: it floats over a scrolling
+/// dashboard and is the only chrome on the screen. The glass replaces the `nav`
+/// fill; `nav` becomes its tint so the bar still reads as dark chrome in either
+/// palette (see `DQGlass.nav`).
+///
+/// The active pill stays **opaque**, not a second glass layer. It has to carry
+/// `navActiveInk` at full contrast, and glass inside glass would either merge
+/// with the bar or wash the ink out. It slides between items instead, which is
+/// the motion the material implies anyway.
 struct FloatingTabBar<Tab: Hashable>: View {
     struct Item: Identifiable {
         let tab: Tab
@@ -260,6 +270,8 @@ struct FloatingTabBar<Tab: Hashable>: View {
 
     @Environment(\.dq) private var p
     @Environment(\.dqTheme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Namespace private var indicator
 
     var body: some View {
         HStack(spacing: 5) {
@@ -273,7 +285,9 @@ struct FloatingTabBar<Tab: Hashable>: View {
                         .frame(width: 56, height: DQSize.minHitTarget)
                         .background {
                             if selection == item.tab {
-                                Capsule().fill(p.navActive)
+                                Capsule()
+                                    .fill(p.navActive)
+                                    .matchedGeometryEffect(id: "tab.selection", in: indicator)
                             }
                         }
                         .contentShape(Capsule())
@@ -283,8 +297,12 @@ struct FloatingTabBar<Tab: Hashable>: View {
                 .accessibilityAddTraits(selection == item.tab ? [.isButton, .isSelected] : .isButton)
             }
         }
+        // Scoped to the bar rather than wrapped around the `selection` write:
+        // the same binding drives the TabView, and animating the mutation would
+        // put this animation on the tab *content* swap as well.
+        .animation(reduceMotion ? nil : DQMotion.tabSelect, value: selection)
         .padding(8)
-        .background(Capsule().fill(p.nav))
+        .dqGlass(tint: DQGlass.nav(p))
         .dqShadow(.standard(theme))
         .padding(.top, 10)
         .padding(.bottom, DQSpace.safeBottom)

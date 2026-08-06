@@ -210,8 +210,10 @@ struct ConnectedChatView: View {
             .accessibilityLabel("Send")
         }
         .padding(8)
-        .background(Capsule().fill(p.surface2))
-        .overlay(Capsule().strokeBorder(p.line, lineWidth: 1))
+        // Glass, not `surface2`: the composer is pinned chrome that the
+        // transcript scrolls under. The send button stays a solid ember disc —
+        // it is the commit action, and ember has to read at full strength.
+        .dqGlass()
     }
 }
 

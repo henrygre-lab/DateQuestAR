@@ -158,6 +158,38 @@ Rules:
 
 ## 5. Components
 
+### Liquid Glass — where the material may go
+
+The app targets iOS 26, so the frosted surfaces this spec described in CSS terms
+(`rgba(255,255,255,0.16)` + `backdrop-blur(14)`) are now the platform's own
+material rather than something hand-rolled. Everything below that says "glass"
+means `.glassEffect`, applied through `dqGlass` so the tints stay tokens.
+
+**Glass is the layer above content, and only that layer.** It goes on:
+
+- chrome floating over a photo or a camera feed — GlassChip, the over-photo
+  RevealMeter, the radar and liveness HUD controls;
+- chrome floating over app content — icon buttons, the FloatingTabBar, the chat
+  composer.
+
+It does **not** go on content: cards, rows, panels, form fields, sheets and the
+blocking-save overlay all stay on the opaque `surface` tokens. A screen where
+everything is glass has nothing left for glass to float above, and the
+RevealHero in particular has to stay the brightest object on screen (§8).
+
+Two consequences at every call site:
+
+- **No border.** The material draws its own specular edge. The 1pt white
+  strokes this spec previously asked for on GlassChip and the RevealMeter are
+  gone — stacking a painted border on a lit edge is the exact look the material
+  replaces.
+- **No drop shadow under small chrome.** Glass carries its own separation.
+  Shadows survive only where an element is genuinely lifted off the page — the
+  tab bar keeps `shadow`, the 38pt icon buttons dropped `shadowSm`.
+
+Reduce Transparency and Increase Contrast are handled by the material; no
+surface branches on them.
+
 ### StageStepper
 4 equal segments, `height 5`, `rPill`, `gap 6`. Completed/current = `ember`; the current segment also gets `shadow: 0 0 12px emberGlow`. Labels below: 8.5px/700, +8% tracking, uppercase — `emberText` when reached, `text3` when not.
 
@@ -165,8 +197,8 @@ Rules:
 
 ### RevealMeter
 Two variants.
-- **Over photo:** inside a glass pill (`rgba(255,255,255,0.14)` + `blur(14)` + `rgba(255,255,255,0.20)` border), white track at 24% opacity, white fill, white % label.
-- **On surface:** `track` background, `ember` fill, `emberText` % label.
+- **Over photo:** inside a glass pill tinted `rgba(255,255,255,0.14)`, white track at 24% opacity, white fill, white % label. No border — see the Liquid Glass rules above.
+- **On surface:** `track` background, `ember` fill, `emberText` % label. Bare — no pill, it sits directly on the card.
 Height 5–6, `rPill`.
 
 ### RevealHero
@@ -179,7 +211,7 @@ Height 5–6, `rPill`.
 **Text over imagery is always white, in both themes.** The scrim guarantees contrast.
 
 ### GlassChip
-`padding 8×13`, `rPill`, `rgba(255,255,255,0.16)`, `backdrop-blur(14)`, `1px rgba(255,255,255,0.24)` border, white text 11px/600–700. Only used **on top of photos**.
+`padding 8×13`, `rPill`, glass tinted `rgba(255,255,255,0.16)`, white text 11px/600–700, no border. Only used **on top of photos**.
 
 ### Chip (on surface)
 `padding 9×14`, `rPill`, `surface2` fill, `line` border, `text` ink, 11–12px/600.
@@ -189,8 +221,10 @@ Variants: **selected** = `cta` fill + `ctaText`; **accent** = `emberSoft` + `emb
 - **Primary (commit):** `ember` fill, white text, height 54, `rPill`, `shadow 0 12px 30px emberGlow`. **One per screen, and only for the commit action.**
 - **Primary (neutral progression):** `cta` fill / `ctaText`, height 54, `rPill`, `shadowSm`.
 - **Ghost:** transparent, `1px lineStrong`, `text2`, height 52.
-- **Icon button:** 38–46 circle, `surface` fill, `line` border, `shadowSm`.
-- **Send FAB:** 42–48 circle, `ember`, white glyph.
+- **Icon button:** 38–46 circle of interactive glass, `text` glyph. The material supplies what was previously `surface` + `line` + `shadowSm`, and reacts to the press as well.
+- **Send FAB:** 42–48 circle, `ember`, white glyph. **Stays solid** — it is a commit action and ember has to read at full strength.
+
+The pill buttons stay solid too. `.glass` / `.glassProminent` button styles are **not** used anywhere: the ember commit pill is the loudest thing on its screen by design, and a translucent version of it is a weaker CTA, not a more modern one.
 
 ### TierBadge / TrustChip
 Diamond glyph `◆` in the tier colour + tier name. On surface: `surface2` pill + `line` border. On photo: GlassChip.
@@ -250,7 +284,11 @@ The progress bar and `n / m quests` row are **conditional on a quest content mod
 `rCard 22`, `demoBg` fill, **1px dashed `demoLine`**. A `DEBUG` mono chip in `demoChip`/`demoInk` at a **squared 7pt radius — deliberately not a pill**: every interactive element in the product is a pill, so a squared chip puts the debug affordance in a different visual register and stops it reading as product UI. Then the caption "Developer bypass · not shipped", a ghost pill "Simulate encounter" and a 44px reset circle. Dashed border + squared mono chip are the only signals — no yellow/black hazard styling, no warning tint, no emoji.
 
 ### FloatingTabBar
-`rPill`, `nav` fill, `padding 8`, `shadow`. 4 items at 56×44. Active = `navActive` pill with `navActiveInk` glyph; inactive glyphs `navInk`.
+`rPill`, glass tinted with `nav`, `padding 8`, `shadow`. 4 items at 56×44. Active = `navActive` pill with `navActiveInk` glyph; inactive glyphs `navInk`.
+
+`nav` is near-opaque, so it lands as a tint at reduced strength rather than as a fill — used raw it would cancel the material out. Tinting rather than dropping the token is what keeps the bar reading as dark chrome in *both* palettes; untinted glass would put `navInk` grey on light glass the moment a light theme ships.
+
+**The active pill stays opaque.** It carries `navActiveInk` at full contrast, and a second glass layer inside the bar would either merge with it or wash the ink out. It slides between items instead (~320ms, springy), which is the motion the material implies anyway.
 
 ### SafetySheet
 Scrim `rgba(8,9,11,0.66)` + `blur(3)` over the dimmed screen. Sheet: `rSheet` top corners, `bg` fill, 40×5 grabber. Rows are `rRow` with a 34px circular icon. Only the report row uses `danger` (ink, icon, and a `rgba(229,72,77,0.34)` border).
@@ -261,10 +299,10 @@ Scrim `rgba(8,9,11,0.66)` + `blur(3)` over the dimmed screen. Sheet: `rSheet` to
 
 | Screen | Purpose | Key notes |
 |---|---|---|
-| **HomeView** | Quest mode + nearby signals + demo entry | Quest card is the hero. Nearby signals are blurred photo cards (22–26px) with glass tier chips. Tab bar floats over content. |
+| **HomeView** | Quest mode + nearby signals + demo entry | Quest card is the hero. Nearby signals are blurred photo cards (22–26px) with glass tier chips. Glass tab bar floats over content, which scrolls under it behind a soft scroll-edge effect. |
 | **EncounterView** | The reveal ladder, 4 stages | Top bar → stepper → RevealHero → score/chips (stages 1–3) or rating + tier upgrade (stage 4) → CTA → safety line. CTA copy per stage: `Start icebreaker` / `Resume icebreaker` / `NameDrop to connect` / `Say hello`. Only stage 3 uses the ember CTA. See §6.1 for stage-1 gating, the icebreaker chooser, and the top bar. |
 | **IcebreakerView** | Trivia + Word chain | Persistent partner strip (blurred thumb + live reveal meter) so the unblur is visible during play. Feedback banner above the CTA. |
-| **Connected chat** | Post-NameDrop conversation | Unblurred avatar + verify check, "You connected" summary card, shared-interest chips, persistent safety prompt above the composer. |
+| **Connected chat** | Post-NameDrop conversation | Unblurred avatar + verify check, "You connected" summary card, shared-interest chips, persistent safety prompt above the composer. The composer is glass — pinned chrome the transcript scrolls under — with a solid ember send FAB. |
 | **Trust centre** | Tier ladder + verification | Current tier card with 4-segment metallic ladder, then a row per tier with its requirement. Closing disclaimer: tiers are not a ranking. |
 | **Safety sheet** | Report / end / share location | Reachable from every encounter via the shield icon button. |
 
@@ -327,6 +365,7 @@ A disabled primary pill is a dead end; a pill that reports distance is part of t
 | Quest sweep bar | translateX(−100% → 300%), 2.8s ease-in-out, infinite |
 | Tier upgrade glow | box-shadow 0 → 26px platinum → 0, 3s ease-in-out, infinite |
 | Button press | scale 0.97, 120ms |
+| Tab selection | active pill slides between items, ~320ms, springy — not a cross-fade |
 
 ---
 
@@ -342,10 +381,13 @@ A disabled primary pill is a dead end; a pill that reports distance is part of t
 - **Custom top bars, not `NavigationStack` toolbars.** The floating round back button is the app's language. `NavigationStack` stays where it drives real pushes; its bar is hidden.
 - **Rows carry no icons.** Leading glyphs stay reserved for trust, live and verify states, so they keep meaning something.
 - **In auth, the one primary pill is the neutral filled button.** Every other provider is ghost, and provider colour is confined to the glyph.
+- **Reach for glass over a camera feed.** Fixed fills are the wrong tool there — a 50%-black disc disappears in a dark room, and a 6%-white one disappears everywhere. The material is the only chrome that holds against a frame the user is actively moving.
 
 **Avoid**
 - Pink/purple gradients, neon, heavy glows.
 - `ember` as a large surface fill — it is an accent.
+- **Glass on the content layer.** Cards, rows, panels, fields, sheets and the blocking-save overlay stay opaque. Glass is what floats *above* content; make everything glass and nothing is floating.
+- **Borders and drop shadows on small glass chrome.** The material already draws an edge and its own separation. Painting another one over it is the look Liquid Glass replaced.
 - Gamified *trust*: badge shelves, tier celebrations, confetti on verification. This is about the trust ladder, not XP — XP may be displayed (mono, neutral ink, plain surface card), just never beside a tier badge, never as a level-up celebration.
 - Partial face or eye reveal; any non-uniform blur.
 - Neumorphic double/emboss shadows (softness was borrowed from the reference, the emboss was not).
