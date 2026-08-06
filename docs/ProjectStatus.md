@@ -97,12 +97,13 @@ Full detail — including everything deferred and why — is in
 5. Define a quest content model — the QuestCard is specced around one that does
    not exist.
 6. Design messaging, then wire `ConnectedChatView` and restore `Say hello`.
-7. **Untrack `functions/node_modules/`.** It is 8,847 of the repo's 8,973 tracked
-   files — 98.6% — and `.gitignore` already excludes it, so it is tracked purely
-   because it was committed before the rule landed. `git rm -r --cached
-   functions/node_modules` fixes it without touching the working tree. Left alone
-   so far because it is a large, distinct change that does not belong in a UI
-   commit.
+7. **Optional: shrink the repo's history.** `functions/node_modules/` is no
+   longer tracked (August 5) — it was 8,847 of 8,973 tracked files, kept alive
+   only because it predated the `.gitignore` rule. Untracking stops the growth
+   but leaves the old blobs in past commits, so a fresh clone is still large.
+   Actually shrinking it means a history rewrite (`git filter-repo`), which is
+   worth doing only if clone size becomes a real problem — it invalidates every
+   existing clone and rewrites every commit hash.
 
 ## Carried over (unchanged from Phase 1/2)
 
