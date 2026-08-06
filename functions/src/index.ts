@@ -1,4 +1,4 @@
-// MARK: - Vibe Coding Security Checklist Compliance
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets in this file — all secrets managed via defineSecret()
 // [x] Admin SDK initialized once at top level
 // [x] All exports are typed Cloud Functions — no raw Express endpoints

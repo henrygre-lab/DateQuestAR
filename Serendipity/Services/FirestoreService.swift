@@ -1,4 +1,4 @@
-// MARK: - Vibe Coding Security Checklist Compliance
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets, API keys, or tokens
 // [x] All writes use authenticated UID — no anonymous writes
 // [x] Transactions used for alert counter increments (atomicity)
@@ -393,8 +393,15 @@ final class FirestoreService {
     ///   - reason: Internal debug label (e.g., "icebreaker_completed"). No PII.
     /// - Returns: The user's new total XP after the grant.
     ///
-    /// - Security: Amount is clamped server-side. Reason is never user-supplied
-    ///   free text — callers pass fixed string constants only.
+    /// - Security: the clamp below runs **on the client and is advisory only** —
+    ///   this is a client-side Firestore transaction, so anyone with the app's
+    ///   credentials can write `gamification.totalXP` directly and never reach
+    ///   this function. §03 requires XP grants to be validated server-side; that
+    ///   means a Cloud Function or a Firestore rule bounding the delta, and
+    ///   neither exists yet. Treated the same way `AlertCapManager` treats its
+    ///   caps: enforced here as a courtesy, authoritative nowhere.
+    ///   Reason is never user-supplied free text — callers pass fixed string
+    ///   constants only.
     func grantXP(uid: String, amount: Int, reason: String) async throws -> Int {
         // Clamp to prevent abuse if a caller passes an unreasonable value
         let safeAmount = min(max(amount, 1), 10000)

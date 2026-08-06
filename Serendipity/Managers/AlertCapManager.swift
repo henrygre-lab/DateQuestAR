@@ -1,4 +1,4 @@
-// MARK: - SECURITY CHECKLIST COMPLIANCE (see SECURITY_CHECKLIST.md)
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets, API keys, or tokens
 // [x] Client-side daily alert caps are ADVISORY ONLY — final enforcement happens
 //     via Firestore Security Rules (to be added in follow-up)

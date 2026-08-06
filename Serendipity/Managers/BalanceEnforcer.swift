@@ -1,4 +1,4 @@
-// MARK: - SECURITY CHECKLIST COMPLIANCE
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets, API keys, or tokens
 // [x] All thresholds read from server (Firestore global_gender_stats) — not client constants
 // [x] No client-side writes to global_gender_stats — read-only listener

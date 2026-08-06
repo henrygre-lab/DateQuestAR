@@ -1,4 +1,4 @@
-// MARK: - Vibe Coding Security Checklist Compliance
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets, API keys, or tokens
 // [x] Squad radar mode evaluated from explicit parameters — no mutable shared state
 // [x] BalanceEnforcer.needsFemaleBoost is read-only on client (written by Cloud Function)

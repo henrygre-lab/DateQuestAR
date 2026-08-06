@@ -1,4 +1,4 @@
-// MARK: - Vibe Coding Security Checklist Compliance
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets, API keys, or tokens
 // [x] Gender selection calls server-side applyGenderDefaults Cloud Function
 // [x] Waitlist decision made server-side — client only reads the result

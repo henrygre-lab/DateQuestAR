@@ -1,4 +1,4 @@
-// MARK: - SECURITY CHECKLIST COMPLIANCE
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets, API keys, or tokens
 // [x] No raw UIDs logged — all user identifiers are SHA256-hashed before logging
 // [x] No PII in analytics parameters — only aggregate/enum values

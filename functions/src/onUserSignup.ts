@@ -1,4 +1,4 @@
-// MARK: - Vibe Coding Security Checklist Compliance
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets — uses Admin SDK service account, not API keys
 // [x] Triggered by Firebase Auth onCreate — cannot be called by arbitrary clients
 // [x] Writes only to the newly created user's own document + waitlist entry

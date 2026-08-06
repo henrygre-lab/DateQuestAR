@@ -51,7 +51,7 @@ Most dating apps are catalogs. Serendipity is a compass — a proximity-first iO
 - `revealed` at progress ≥ 0.70
 - `connected` at progress ≥ 1.00 (post-NameDrop only)
 
-3D proximity uses horizontal distance + `CMAltimeter` altitude. Motion context (`CMMotionActivityManager`) gates new session creation to walking/running only.
+> **Not yet implemented.** Earlier drafts of this section described 3D proximity via `CMAltimeter` altitude and a `CMMotionActivityManager` walking/running filter gating session creation. Neither framework is referenced anywhere in the codebase. Both remain *proposed* mitigations in [`docs/EDGE_CASES_AND_OBJECTIONS.md`](docs/EDGE_CASES_AND_OBJECTIONS.md) — vertical density (someone 40 floors up) and vehicle noise (alerts from passing cars) are currently unmitigated.
 
 ---
 
@@ -102,11 +102,10 @@ MVVM with `ObservableObject` services. All business logic lives in Managers and 
 | Backend | Firebase Auth + Cloud Firestore |
 | Location | CoreLocation, geohash (precision 7, native implementation) |
 | Short-range proximity | NearbyInteraction (UWB), CoreBluetooth (BLE) |
-| Motion / Altitude | CMMotionActivityManager, CMAltimeter |
 | Haptics | CoreHaptics |
 | AR | ARKit |
 | Computer Vision | Vision framework (liveness detection) |
-| Auth | Firebase Auth, Face ID / Touch ID |
+| Auth | Firebase Auth (email/password + Google). Face ID via `LocalAuthentication` is implemented but not wired to any screen |
 | Analytics | AppTrackingTransparency-compliant, no PII in events |
 | Logging | `os.Logger` via `Utilities/Log.swift`, one category per subsystem area, messages marked `.private` |
 | Tests | XCTest (unit + UI) |
@@ -217,7 +216,9 @@ These are deliberate next steps, not gaps — the core proximity-reveal-AR loop 
 | ProximityService wiring | UWB/BLE service implemented; not yet connected to MatchManager trigger path | Wire `ProximityService` events into `MatchManager.handleNearbyEvent` |
 | AI preference alignment | Dimension 4 (preference alignment) uses distance-tolerance check only | Expand with dealbreaker logic and ML model |
 | Apple Sign-In | Stub implemented | Requires paid Apple Developer Program enrollment |
-| Firestore Security Rules | Client caps are advisory; server rules not yet written | Add Firestore rules to enforce alert caps atomically |
+| Firestore Security Rules | **The single largest open gap.** Client caps, the XP clamp in `grantXP`, trust recalculation and account status are all advisory — a client-side Firestore transaction can be bypassed by anyone holding the app's credentials. `docs/SECURITY_CHECKLIST.md` §02/§03 name the server as authoritative; today nothing is | Write the rules, then move XP grants and trust updates behind Cloud Functions |
+| Motion / altitude filtering | Not implemented — no `CMMotionActivityManager`, no `CMAltimeter`. Vertical density and vehicle noise are unmitigated | Build the walking/running gate and the altitude check described in `EDGE_CASES_AND_OBJECTIONS.md` |
+| Cloud Functions dependencies | `npm audit` clean of critical/high as of 2026-08-05; 9 moderate advisories remain, all needing a major bump of `firebase-admin` (→14) and `firebase-functions` (→7) | Take the majors deliberately, with a deploy to the emulator to catch API breakage |
 | AR Icebreaker views | Challenge types defined and dispatched; AR Object + Gesture views in progress | Complete ARKit placement views for all four types |
 | Post-meet rating pipeline | Rating flow integrated into trust score recalculation | Build rating UI and Cloud Function aggregation |
 

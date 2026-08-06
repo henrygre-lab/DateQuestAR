@@ -1,6 +1,16 @@
 # Vibe Coding Security Checklist
 
-Security is the #1 priority — never compromise it for speed, simplicity, or "vibe". Before writing ANY code, during planning, and in every response that includes or modifies code, follow and enforce this checklist. All Serendipity source files begin with a `// MARK: - SECURITY CHECKLIST COMPLIANCE` block citing which items apply.
+Security is the #1 priority — never compromise it for speed, simplicity, or "vibe". Before writing ANY code, during planning, and in every response that includes or modifies code, follow and enforce this checklist.
+
+## The compliance block
+
+A file with a security surface begins with a `// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)` block listing the items that apply to it. **Exactly that wording** — it is meant to be greppable, and it drifted into two variants once already.
+
+"A security surface" means the file does at least one of: touch auth or session state; read or write Firestore or Storage; handle location, camera, Bluetooth or motion; log or emit analytics; gate match visibility, alert caps, trust or account status; or define a model whose invariants the rules above depend on. That is 25 of 75 Swift files and all 5 Cloud Functions today.
+
+Presentational views, layout helpers and the design-token layers do **not** carry one. This is deliberate: a `[x] No hardcoded secrets` line on a `FlowLayout` is noise, and a convention that puts a block on every file trains reviewers to scroll past all of them. The blocks are worth reading precisely because their presence means something.
+
+**A checked line is a claim, and a false one is worse than no block at all.** `AuthViewModel` claimed "sign-in errors surface generic messages — no account-existence leakage" while `signIn` was assigning `error.localizedDescription` straight to the UI; the block is what made that look reviewed. When the code stops matching a line, fix the code or delete the line.
 
 ---
 

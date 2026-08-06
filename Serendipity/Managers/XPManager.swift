@@ -1,4 +1,4 @@
-// MARK: - SECURITY CHECKLIST COMPLIANCE (see SECURITY_CHECKLIST.md)
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets, API keys, or tokens
 // [x] All XP writes go through FirestoreService transactions — no client-side manipulation
 // [x] XP amounts are fixed constants, not caller-controlled or user-editable

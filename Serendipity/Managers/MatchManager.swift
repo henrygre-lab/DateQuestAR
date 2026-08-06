@@ -1,4 +1,4 @@
-// MARK: - SECURITY CHECKLIST COMPLIANCE
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets, API keys, or tokens
 // [x] Asymmetric alert caps enforced via AlertCapManager (Risk #1: Gender Imbalance / Male Overload)
 //     - Women: 10/day, Non-binary: 20/day, Prefer-not-to-say: 15/day, Men: 40/day

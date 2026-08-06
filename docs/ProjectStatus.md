@@ -31,6 +31,34 @@ reported user's uid — which is the security checklist's §01 rule ("remove all
 on the exact data the product exists to protect. Messages are now marked
 `.private`, so they read under Xcode and redact everywhere else.
 
+## Security checklist audit (August 5)
+
+Full pass over `docs/SECURITY_CHECKLIST.md` §01–§05. Eight findings, all fixed
+except the two noted as still open.
+
+| § | Finding | Status |
+|---|---|---|
+| 02 | `signIn` assigned Firebase's `localizedDescription` straight to the UI, which distinguishes `.userNotFound` from `.wrongPassword` — an account-enumeration oracle on the login form. The file's own compliance block claimed the opposite | **Fixed** — one message for both |
+| 02 | `SafetyVerifier.reportUser` and the verification `catch` rendered raw backend error text; `deleteAccount` and `signOut` did the same | **Fixed** — generic copy, detail to the log |
+| 04 | The AR session was never explicitly paused or torn down. ARKit interrupts itself on background, so no camera was left open, but nothing stopped the session when the radar was dismissed and the rule was satisfied only by inheritance | **Fixed** — explicit pause/resume + `dismantleUIView` |
+| 01 | Dependencies had never been audited: 20 advisories, 2 critical, 3 high | **Fixed** for critical/high; 9 moderate remain, all requiring major bumps of `firebase-admin` and `firebase-functions` |
+| 03/05 | `grantXP` documented its clamp as "server-side". It runs on the client, in a client-side transaction anyone can bypass | **Fixed** — comment now says advisory, like `AlertCapManager` |
+| 04 | `NSFaceIDUsageDescription` missing while `LocalAuthentication` ships. Would crash the moment Face ID is wired | **Fixed** |
+| — | `UIRequiredDeviceCapabilities` was `armv7` — 32-bit ARM, which no iOS 26 device has | **Fixed** → `arm64` |
+| — | The checklist claimed every source file carries a compliance block; 25 of 75 did, in two different wordings, and `SafetyVerifier` had two stacked | **Fixed** — one wording, convention documented honestly |
+
+**Still open, and both are structural rather than oversights:**
+
+1. **No Firestore Security Rules.** This is the big one. §02 and §03 both name the
+   server as authoritative, and today nothing is: alert caps, the XP clamp, trust
+   recalculation and account status are all enforced in client code that a
+   determined user can simply not run. The client-side checks are honestly
+   labelled as advisory now, everywhere, but labelling is not enforcing.
+2. **Motion and altitude filtering do not exist.** `CMMotionActivityManager` and
+   `CMAltimeter` appear in no source file. README stated both as shipped and has
+   been corrected; `EDGE_CASES_AND_OBJECTIONS.md` was already honest in calling
+   them proposals. Vertical density and vehicle noise are unmitigated.
+
 ## Current phase: DesignSystem v2 UI rework
 
 Replacing the v1 purple/mono token layer with the ember, photo-forward v2 system

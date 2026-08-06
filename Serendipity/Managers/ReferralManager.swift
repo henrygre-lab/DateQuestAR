@@ -1,4 +1,4 @@
-// MARK: - SECURITY CHECKLIST COMPLIANCE
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets, API keys, or tokens
 // [x] Referral validation done server-side via Cloud Functions — client only reads results
 // [x] No raw UIDs in analytics — hashed before logging

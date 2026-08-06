@@ -1,4 +1,4 @@
-// MARK: - Vibe Coding Security Checklist Compliance (see SECURITY_CHECKLIST.md)
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No raw coordinates stored — only geohash
 // [x] Auto-pause zones respected
 // [x] Motion filter (walking/running) for new sessions

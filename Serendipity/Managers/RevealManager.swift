@@ -1,4 +1,4 @@
-// MARK: - SECURITY CHECKLIST COMPLIANCE (see SECURITY_CHECKLIST.md)
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets, API keys, or tokens
 // [x] Full photos never exposed until revealStage == .connected — client receives
 //     blurred/partial variants via server-generated signed URLs (short-lived)

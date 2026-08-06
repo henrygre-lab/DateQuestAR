@@ -1,4 +1,4 @@
-// MARK: - Vibe Coding Security Checklist Compliance
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets, API keys, or tokens
 // [x] Alert cap sourced from BalanceEnforcer (reads server-set values from Firestore)
 // [x] Vibe tags stored only on user's own Firestore document — no cross-user exposure

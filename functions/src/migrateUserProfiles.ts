@@ -1,4 +1,4 @@
-// MARK: - Vibe Coding Security Checklist Compliance
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets — uses Admin SDK only
 // [x] Runs as one-shot callable (admin-only) — not exposed to regular users
 // [x] Writes only default safety fields — never overwrites existing user data

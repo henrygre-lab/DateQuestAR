@@ -1,4 +1,4 @@
-// MARK: - SECURITY CHECKLIST COMPLIANCE
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets, API keys, or tokens
 // [x] XP/badge writes go through FirestoreService (server-validated via security rules)
 // [x] Remote Config values validated and clamped before use

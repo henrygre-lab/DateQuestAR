@@ -1,4 +1,4 @@
-// MARK: - Vibe Coding Security Checklist Compliance
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] Pure native Swift — no external dependencies
 // [x] Precision 7 (≈150 m × 150 m) as required for Quest Mode
 // [x] Correct bit-interleaving algorithm (longitude first per canonical spec)

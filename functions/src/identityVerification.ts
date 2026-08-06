@@ -1,4 +1,4 @@
-// MARK: - Vibe Coding Security Checklist Compliance
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets — Persona/Onfido API key stored in Firebase Secret Manager
 // [x] API key accessed via defineSecret(), never exposed to client
 // [x] Client sends only their UID + inquiry reference — no raw ID images transit through us

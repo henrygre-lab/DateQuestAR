@@ -1,4 +1,4 @@
-// MARK: - Vibe Coding Security Checklist Compliance
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets — all config via Firebase environment/Remote Config
 // [x] Runs as scheduled Cloud Function with Admin SDK — no client credentials
 // [x] Writes only to global_gender_stats and Remote Config — never user PII

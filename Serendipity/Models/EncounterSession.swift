@@ -1,4 +1,4 @@
-// MARK: - SECURITY CHECKLIST COMPLIANCE (see SECURITY_CHECKLIST.md)
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets, API keys, or tokens
 // [x] Session data is Firestore-backed; client state is advisory only
 // [x] No raw photo URLs stored — reveal gated by RevealStage enum

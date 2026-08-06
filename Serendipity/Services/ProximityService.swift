@@ -1,4 +1,4 @@
-// MARK: - SECURITY CHECKLIST COMPLIANCE
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets, API keys, or tokens
 // [x] No raw coordinates transmitted — BLE service UUID is app-scoped, not location-bearing
 // [x] accountStatus checked before any proximity alert — waitlisted users get nothing
