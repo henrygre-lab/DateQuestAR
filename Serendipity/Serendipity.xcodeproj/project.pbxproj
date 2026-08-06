@@ -489,6 +489,7 @@
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Serendipity uses Bluetooth to detect nearby matches.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Serendipity uses the camera for the AR radar experience.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Face ID unlocks Serendipity without retyping your password.";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Serendipity uses your location to find nearby matches during quest mode.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Serendipity needs your location to show nearby matches on the radar.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -530,6 +531,7 @@
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "Serendipity uses Bluetooth to detect nearby matches.";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Serendipity uses the camera for the AR radar experience.";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Face ID unlocks Serendipity without retyping your password.";
 				INFOPLIST_KEY_NSLocationAlwaysAndWhenInUseUsageDescription = "Serendipity uses your location to find nearby matches during quest mode.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Serendipity needs your location to show nearby matches on the radar.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
