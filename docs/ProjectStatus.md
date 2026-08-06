@@ -1,12 +1,35 @@
-# Serendipity — Project Status (July 29, 2026)
+# Serendipity — Project Status (August 5, 2026)
 
 ## Build Status
-- [x] Clean build succeeds for the iOS 26.2 simulator (verified July 29)
+- [x] Clean build succeeds against the iOS 26.5 SDK (verified August 5)
 - [x] All Firebase modules resolved
 - [x] Info.plist + Signing + @main entry point correct
 - [x] AlertCapManager, BalanceEnforcer, and core safety features compile
+- [x] Waves 1–2 of the rework are committed (`8891383`, July 29)
 - [ ] Not run on device or simulator since the UI rework — see below
-- [ ] The entire rework is **uncommitted** — 45 changed paths in the working tree
+
+One warning survives the build, deliberately: `OpenURLOptionsKey` is deprecated
+in iOS 26, and migrating off it means moving URL handling into a scene delegate
+on the auth-critical Google Sign-In path. The call site carries a comment saying
+so. Everything else is clean.
+
+## Latest: Liquid Glass + logging (August 5)
+
+**Liquid Glass.** The app deploys to iOS 26.2, so the frosted surfaces the spec
+described in CSS terms are now the platform material. Adopted on chrome that
+floats above content — the tab bar, icon buttons, over-photo chips, the
+over-photo reveal meter, the chat composer, and the HUD controls over the AR and
+liveness camera feeds — and deliberately kept off the content layer. Full
+before/after table in [`UI_REWORK_STATUS.md`](UI_REWORK_STATUS.md) §0; the rule
+and its consequences are now spec, in `DESIGN_SYSTEM.md` §5 and §8.
+
+**Logging.** 55 `print` calls across 14 files moved onto `os.Logger` via
+`Utilities/Log.swift`. `print` is not compiled out of release builds, and those
+calls between them carried a user's geohash, a match's display name and a
+reported user's uid — which is the security checklist's §01 rule ("remove all
+`print` statements that expose internals in production builds") going unenforced
+on the exact data the product exists to protect. Messages are now marked
+`.private`, so they read under Xcode and redact everywhere else.
 
 ## Current phase: DesignSystem v2 UI rework
 
@@ -55,28 +78,31 @@ Full detail — including everything deferred and why — is in
 
 ## Immediate next steps
 
-1. **Commit the rework.** It is two full waves deep and entirely untracked, which
-   means there is no way to bisect a regression back to a surface.
-2. **Run it.** Nothing from the rework has been exercised at runtime. The
-   floating tab bar's safe-area handling, the QuestCard sweep timing, the
-   width-scaled thumbnail blur, and now the step dots and blocking-save overlay
-   all need eyes on a device.
-3. Migrate the 17 remaining `enum DQ` readers, then delete it. Three design calls
-   need answering first — Radar, the camera overlay, and OAuth brand marks; see
-   `UI_REWORK_STATUS.md` §7. Read the new `RadarScreenV2` mock into spec §6
-   before touching `RadarView`.
-4. Add mock fixtures + SwiftUI previews so v2 surfaces can be iterated without a
+1. **Run it.** This is now the only thing standing between the rework and
+   confidence, and it has been the top item for two waves running. Nothing has
+   been exercised at runtime: the floating tab bar's safe-area handling, the
+   QuestCard sweep timing, the width-scaled thumbnail blur, the step dots, the
+   blocking-save overlay — and now the glass, which is the kind of change that
+   can only be judged on a device. See `UI_REWORK_STATUS.md` §6 for the specific
+   things to look at.
+2. Migrate the 17 remaining `enum DQ` readers, then delete it. Three design calls
+   need answering first — Radar, the camera overlay (now half-answered: controls
+   take glass, the prompt text is still unruled), and OAuth brand marks; see
+   `UI_REWORK_STATUS.md` §7. Read the `RadarScreenV2` mock into spec §6 before
+   touching `RadarView`.
+3. Add mock fixtures + SwiftUI previews so v2 surfaces can be iterated without a
    Firebase sign-in.
-5. Point the Settings Verification row at `TrustCenterView` instead of the
+4. Point the Settings Verification row at `TrustCenterView` instead of the
    placeholder — a one-line change.
-6. Define a quest content model — the QuestCard is specced around one that does
+5. Define a quest content model — the QuestCard is specced around one that does
    not exist.
-7. Design messaging, then wire `ConnectedChatView` and restore `Say hello`.
-8. Decide where the two design handoff drops live. There are currently two
-   untracked copies — `Serendipity/design/` (drop 1) and
-   `design_handoff_serendipity_ds_v2 2/` at the repo root (drop 2, with the forms,
-   Radar and Settings mocks). Keep one, gitignore or commit it deliberately, and
-   drop the stale one; `docs/DESIGN_SYSTEM.md` is canonical either way.
+6. Design messaging, then wire `ConnectedChatView` and restore `Say hello`.
+7. **Untrack `functions/node_modules/`.** It is 8,847 of the repo's 8,973 tracked
+   files — 98.6% — and `.gitignore` already excludes it, so it is tracked purely
+   because it was committed before the rule landed. `git rm -r --cached
+   functions/node_modules` fixes it without touching the working tree. Left alone
+   so far because it is a large, distinct change that does not belong in a UI
+   commit.
 
 ## Carried over (unchanged from Phase 1/2)
 

@@ -66,6 +66,7 @@ Add in Xcode → File → Add Package Dependencies:
 
 ## Xcode Project Configuration
 
+0. **Xcode 26+** — the deployment target is iOS 26.2 and the UI uses the Liquid Glass APIs
 1. **Deployment Target**: iOS 26.2 (`IPHONEOS_DEPLOYMENT_TARGET` in the project)
 2. **Capabilities** (Signing & Capabilities tab):
    - Background Modes (Location Updates, Uses Bluetooth LE Accessories, Remote Notifications)
@@ -160,24 +161,31 @@ Serendipity/
 │   └── AnalyticsService.swift    # Firebase Analytics (no PII; UIDs SHA256-hashed)
 ├── Views/
 │   ├── Auth/                     # SplashView, OnboardingView                     [v1]
-│   ├── Onboarding/               # ProfileSetupView + steps, LivenessCheck, Waitlist [v1]
+│   ├── Onboarding/               # ProfileSetupView + 7 steps [v2]; LivenessCheck, Waitlist [v1]
 │   ├── Home/                     # HomeView — QuestCard, DemoControl, signals     [v2]
 │   ├── Encounter/                # EncounterView — the reveal ladder (#if DEBUG)  [v2]
 │   ├── Icebreaker/               # IcebreakerView [v2]; NameDrop, PostMeetRating  [v1]
+│   ├── Chat/                     # ConnectedChatView — built, not yet reachable   [v2]
+│   ├── Trust/                    # TrustCenterView — built, not yet reachable     [v2]
+│   ├── Safety/                   # SafetySheetView                                [v2]
 │   ├── Radar/                    # RadarView, ARViewContainer                     [v1]
-│   ├── Settings/                 # SettingsView, pause zones, data rights, report [v1]
+│   ├── Settings/                 # SettingsView, pause zones, data rights, report [v2]
 │   ├── Stats/                    # StatsView                                      [v1]
 │   └── Components/
 │       ├── DQEncounterParts.swift  # [v2] buttons, chips, meters, radar, safety line
 │       ├── DQIcebreakerParts.swift # [v2] partner strip, option rows, chain pills
 │       ├── DQHomeParts.swift       # [v2] QuestCard, DemoControl, SignalCard, tab bar
+│       ├── DQFormParts.swift       # [v2] rows, groups, fields, top bars, empty/loading states
 │       ├── RevealHero.swift        # [v2] the progressive-reveal photo
 │       ├── StageStepper.swift      # [v2] 4-segment reveal ladder
 │       ├── VibeScoreBreakdown.swift/TierUpgradeBanner.swift  # [v2]
-│       └── …                       # [v1] DQTextField, ChipToggle, StatBadge, TrustBadgeView, etc.
+│       └── …                       # [v1] ChipToggle, DQBackground, DQButtonStyles,
+│                                   #      DQCardModifier, FlowLayout, OAuthButton,
+│                                   #      StatBadge, TrustBadgeView
 ├── Utilities/
-│   ├── DQDesignSystem.swift      # [v2] DQ tokens — read via @Environment(\.dq)
+│   ├── DQDesignSystem.swift      # [v2] DQ tokens + `dqGlass` — read via @Environment(\.dq)
 │   ├── DesignSystem.swift        # [v1] legacy `enum DQ` tokens — do not mix with v2
+│   ├── Log.swift                 # os.Logger wrapper — use instead of `print`
 │   ├── ColorExtension.swift      # Hex color init
 │   └── Geohash.swift             # Native geohash encode/decode (precision 7)
 ├── SerendipityTests/             # Unit tests
@@ -203,8 +211,8 @@ Debug builds include a "Developer Bypass" button on the login screen that signs 
 
 | Area | What's Needed |
 |---|---|
-| DesignSystem v2 migration | 3 of 6 surfaces migrated; `RadarView`, Settings, Stats and Onboarding still v1 |
-| Connected chat / Trust centre / Safety sheet | Designed in the handoff bundle, not built |
+| DesignSystem v2 migration | 27 of 46 view files on v2 — all 6 handoff surfaces plus the Settings and Onboarding trees. 17 files still read `enum DQ`; it cannot be deleted until they all move |
+| Trust centre / connected chat entry points | Both are built but unreachable — the Settings Verification row still pushes a placeholder, and chat needs a `Message` model first |
 | Firestore Security Rules | Enforce alert cap atomically server-side |
 | ProximityService wiring | Connect UWB/BLE events to `MatchManager.handleNearbyEvent` |
 | AI preference alignment | Expand dimension 4 with dealbreaker logic and ML model |

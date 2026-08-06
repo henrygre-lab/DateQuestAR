@@ -96,6 +96,7 @@ MVVM with `ObservableObject` services. All business logic lives in Managers and 
 |---|---|
 | Language | Swift 5 |
 | UI | SwiftUI — dark mode enforced. Two token layers mid-migration: `DQDesignSystem.swift` (v2, current) and `DesignSystem.swift` (v1, legacy). See [Design System](#design-system). |
+| Material | Liquid Glass (iOS 26) on chrome that floats above content — tab bar, icon buttons, over-photo chips, camera HUDs. Content surfaces stay opaque. |
 | Typography | Plus Jakarta Sans + IBM Plex Mono, bundled (SIL OFL 1.1) |
 | Architecture | MVVM + `ObservableObject` services |
 | Backend | Firebase Auth + Cloud Firestore |
@@ -107,6 +108,7 @@ MVVM with `ObservableObject` services. All business logic lives in Managers and 
 | Computer Vision | Vision framework (liveness detection) |
 | Auth | Firebase Auth, Face ID / Touch ID |
 | Analytics | AppTrackingTransparency-compliant, no PII in events |
+| Logging | `os.Logger` via `Utilities/Log.swift`, one category per subsystem area, messages marked `.private` |
 | Tests | XCTest (unit + UI) |
 
 ---
@@ -114,7 +116,7 @@ MVVM with `ObservableObject` services. All business logic lives in Managers and 
 ## Requirements & Setup
 
 **Requirements**
-- Xcode 16+ (the project uses file-system synchronized groups)
+- Xcode 26+ (the deployment target is iOS 26.2 and the UI uses the Liquid Glass APIs; the project also uses file-system synchronized groups, which need Xcode 16+)
 - iOS 26.2+ — this is the `IPHONEOS_DEPLOYMENT_TARGET` currently set in the project
 - Physical device required — location services, haptics, and NearbyInteraction do not work in Simulator
 - "Always On" location permission required for Quest Mode background scanning
@@ -139,6 +141,7 @@ These are design constraints, not afterthoughts. Each decision maps to a specifi
 - Three sharing modes: `precise` (opt-in only), `anonymized` (default), `hidden`.
 - Configurable geofence auto-pause zones keep Quest Mode off at home and work.
 - **No place is ever named in the UI.** Outside an active encounter, the count of nearby signals is the only spatial fact displayed — never a neighbourhood, city, venue or landmark. Storing coordinates safely is worth nothing if a screen prints the neighbourhood back out, and ambient screens are the most screenshotted. Enforced as a design rule in [`docs/DESIGN_SYSTEM.md`](docs/DESIGN_SYSTEM.md) §8.
+- **Nothing identifying reaches the device log.** All logging goes through `Utilities/Log.swift`, which hands messages to `os.Logger` marked `.private` — readable when attached to Xcode or Console, redacted in any log a shipping build hands out. This replaced 55 `print` calls, which were not compiled out of release builds and between them carried a user's geohash, a match's display name and a reported user's uid.
 
 **Identity Verification & Liveness**
 - Onboarding requires a liveness check powered by the Vision framework. The camera prompts two randomly selected actions (turn left, turn right, blink, smile) and confirms completion across ≥ 3 consecutive frames before marking the user verified.
@@ -183,6 +186,8 @@ The UI is mid-migration between two token layers. **New work should target v2.**
 
 The names are close enough to be a trap: check which system a view already reads and stay in it. Never mix them in one view. Both files carry a header saying so.
 
+**Liquid Glass** is applied through `dqGlass` in the v2 layer, and only to chrome that floats above content: the tab bar, icon buttons, over-photo chips, the over-photo reveal meter, the chat composer, and the HUD controls over the AR and liveness camera feeds. Content — cards, rows, panels, fields, sheets — stays on the opaque `surface` tokens, because glass that covers everything has nothing left to float above. The rule and its consequences (no borders, no drop shadows on small glass chrome) are in [`docs/DESIGN_SYSTEM.md`](docs/DESIGN_SYSTEM.md) §5; what changed where is in [`docs/UI_REWORK_STATUS.md`](docs/UI_REWORK_STATUS.md) §0.
+
 - **The spec** — [`docs/DESIGN_SYSTEM.md`](docs/DESIGN_SYSTEM.md). Source of truth for tokens, components, motion and screen composition. This repo copy is canonical: rulings are written into it by whoever implements them. The spec wins on values.
 - **What's actually built** — [`docs/UI_REWORK_STATUS.md`](docs/UI_REWORK_STATUS.md). Migration status, deferred items and why, deliberate departures from the mocks.
 
@@ -208,7 +213,7 @@ These are deliberate next steps, not gaps — the core proximity-reveal-AR loop 
 | Trust centre entry | `TrustCenterView` is built but unreachable. The Verification row in `SettingsView` currently pushes a "Verification coming soon" empty state | Swap that placeholder destination for `TrustCenterView` |
 | Quest content model | Quest Mode is a `Bool`; no quest title, description, or `n / m` progress exists | Define a quest model so the QuestCard can carry real quest content |
 | Dynamic Type | Neither design system scales with Dynamic Type | Audit both layers and adopt scaled fonts |
-| Runtime verification | Builds clean for the iOS 26.2 simulator; **no v2 surface has been run**, on device or in Simulator | Reaching an encounter needs Firebase auth — add mock fixtures and SwiftUI previews |
+| Runtime verification | Builds clean against the iOS 26.5 SDK; **no v2 surface has been run**, on device or in Simulator, and the Liquid Glass work has never been looked at | Reaching an encounter needs Firebase auth — add mock fixtures and SwiftUI previews |
 | ProximityService wiring | UWB/BLE service implemented; not yet connected to MatchManager trigger path | Wire `ProximityService` events into `MatchManager.handleNearbyEvent` |
 | AI preference alignment | Dimension 4 (preference alignment) uses distance-tolerance check only | Expand with dealbreaker logic and ML model |
 | Apple Sign-In | Stub implemented | Requires paid Apple Developer Program enrollment |
