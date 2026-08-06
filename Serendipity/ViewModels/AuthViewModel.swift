@@ -161,7 +161,15 @@ final class AuthViewModel: ObservableObject {
         do {
             _ = try await Auth.auth().signIn(withEmail: email, password: password)
         } catch {
-            errorMessage = error.localizedDescription
+            // Checklist §02: never let a sign-in flow leak whether an account
+            // exists. Firebase's `localizedDescription` distinguishes
+            // `.userNotFound` ("no user record corresponding to this
+            // identifier") from `.wrongPassword` ("the password is invalid"),
+            // which turns the login form into an account-enumeration oracle:
+            // an attacker learns which addresses are registered on this app
+            // without ever signing in. One message covers both.
+            errorMessage = "Incorrect email or password."
+            Log.app.error("Sign-in failed: \(error.localizedDescription)")
         }
     }
 
@@ -198,7 +206,8 @@ final class AuthViewModel: ObservableObject {
             appState = .unauthenticated
             currentUser = nil
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = "Could not sign out. Please try again."
+            Log.app.error("Sign-out failed: \(error.localizedDescription)")
         }
     }
 
@@ -219,7 +228,16 @@ final class AuthViewModel: ObservableObject {
             currentUser = nil
             appState = .unauthenticated
         } catch {
-            errorMessage = error.localizedDescription
+            // §02: no raw backend error text in the UI. `requiresRecentLogin`
+            // is the one case the user can actually act on, so it earns its own
+            // message; everything else is a generic failure with the detail in
+            // the log.
+            if (error as NSError).code == AuthErrorCode.requiresRecentLogin.rawValue {
+                errorMessage = "For your security, please sign in again before deleting your account."
+            } else {
+                errorMessage = "Could not delete your account. Please try again."
+            }
+            Log.app.error("Account deletion failed: \(error.localizedDescription)")
         }
     }
 

@@ -1,8 +1,4 @@
-// MARK: - Vibe Coding Security Checklist Compliance (see SECURITY_CHECKLIST.md)
-// [x] Group anomaly detection stub for POTENTIAL_ISSUES.md #6
-// [x] Minimal data exposure — only verification + account status checks
-
-// MARK: - SECURITY CHECKLIST COMPLIANCE
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets, API keys, or tokens
 // [x] Identity verification proxied through Cloud Function — API keys never on client
 // [x] verifyIdentity() calls server-side createVerificationSession + onVerificationComplete
@@ -11,6 +7,10 @@
 // [x] No PII logged — only verification state transitions and badge names
 // [x] Rate limiting enforced server-side (3 attempts/hour) — client cannot bypass
 // [x] Analytics events contain no raw UIDs or PII — only status and trust delta
+// [x] Group anomaly detection stub for POTENTIAL_ISSUES.md #6
+// [x] Minimal data exposure — only verification + account status checks
+// [x] §02 — verification and report failures surface generic copy; the backend
+//     error goes to the log, never onto an onboarding or reporting screen
 
 import Foundation
 import Combine
@@ -209,7 +209,13 @@ final class SafetyVerifier: ObservableObject {
                 verificationBadge = .verified
             }
         } catch {
-            verificationState = .failed(error.localizedDescription)
+            // §02: `.failed`'s message is rendered verbatim by
+            // VerificationStepView, so it must read like the hand-written cases
+            // above it — not like a Firestore or Vision error. A raw
+            // `permission-denied` here would print collection and rule shape
+            // onto an onboarding screen.
+            verificationState = .failed("Verification could not be completed. Please try again.")
+            Log.safety.error("Verification failed: \(error.localizedDescription)")
         }
     }
 
@@ -449,7 +455,12 @@ final class SafetyVerifier: ObservableObject {
             )
             Log.safety.debug("Report submitted for \(reportedUID)")
         } catch {
-            self.errorMessage = "Failed to submit report: \(error.localizedDescription)"
+            // §02: no backend error text in the UI — and least of all here.
+            // Someone filing a harassment report needs to know it did not send
+            // and that they can retry, not to read a Firestore rule failure at
+            // the worst possible moment.
+            self.errorMessage = "Your report couldn't be sent. Please check your connection and try again."
+            Log.safety.error("Report submission failed: \(error.localizedDescription)")
         }
     }
 
