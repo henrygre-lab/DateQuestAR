@@ -1,8 +1,10 @@
 // MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets, API keys, or tokens
-// [x] Community context is recorded on the match document (schoolId / scope /
-//     lockedIntents) so the same-school gate is auditable after the fact rather
-//     than only asserted at query time
+// [x] Community context is recorded on the match document (schoolId / campusId /
+//     scope / lockedIntents) so the community gate is auditable after the fact
+//     rather than only asserted at query time
+// [x] campusId is immutable once written (firestore.rules), so a match formed
+//     while visiting cannot be relabelled onto another campus later
 // [x] Client-written match fields are advisory — firestore.rules re-check that
 //     both participants share a schoolId, or that a live Spring Break window
 //     covers the match, before allowing the write
@@ -47,6 +49,15 @@ struct Match: Identifiable, Codable, Equatable {
 
     /// Destination that authorised a cross-school match, nil for campus matches.
     var springBreakDestinationID: String?
+
+    /// The campus this match was formed on.
+    ///
+    /// Equal to `schoolId` for the ordinary same-school case. Under the Big Game
+    /// rule it is whichever campus the two of them were standing on, which may be
+    /// neither person's own — a Stanford student and a Cal student meeting at
+    /// Berkeley both record `campusId` "cal". Nil on a Spring Break match, where
+    /// `springBreakDestinationID` plays the same role.
+    var campusId: String?
 
     // MARK: - Intent Lock
 

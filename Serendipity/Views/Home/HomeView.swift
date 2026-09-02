@@ -222,7 +222,10 @@ struct HomeView: View {
     /// slot would let one overwrite the other.
     @ViewBuilder
     private var springBreakBanner: some View {
-        if let message = locationService.springBreakStatus.pausedMessage {
+        // One banner slot. A lapsed visiting claim is the more specific fact when
+        // both apply, so it wins.
+        if let message = locationService.visitingCampusStatus.pausedMessage
+            ?? locationService.springBreakStatus.pausedMessage {
             HStack(alignment: .top, spacing: DQSpace.tight) {
                 Image(systemName: "pause.circle")
                     .font(.system(size: 15, weight: .semibold))
@@ -279,7 +282,10 @@ struct HomeView: View {
         case .none:
             return "Paused — you're off campus"
         case .campus:
-            let school = authViewModel.currentUser?.schoolDisplayName
+            // While visiting, the campus you are standing on is the one that
+            // matters — it is whose pool you are in.
+            let school = locationService.visitingCampusStatus.schoolDisplayName
+                ?? authViewModel.currentUser?.schoolDisplayName
             let suffix = (school?.isEmpty == false) ? " · \(school!)" : ""
             return (active ? "Scanning\(suffix)" : "Start scanning\(suffix)")
         case .springBreak(_, let label):
@@ -292,6 +298,10 @@ struct HomeView: View {
         case .none:
             return "Quest Mode runs on campus. It'll pick back up when you're there."
         case .campus:
+            if locationService.visitingCampusStatus.isActive {
+                return "You're on another school's campus, so you'll see their "
+                     + "students and other verified visitors here."
+            }
             return "You'll only see people from your school. An encounter opens "
                  + "when you're within \(rangeText) of someone compatible."
         case .springBreak:
@@ -305,6 +315,10 @@ struct HomeView: View {
         guard scope.allowsQuestMode else { return ["Off campus"] }
 
         var chips = ["Within \(rangeText)"]
+        if let visiting = locationService.visitingCampusStatus.schoolDisplayName,
+           locationService.visitingCampusStatus.isActive {
+            chips.append("Visiting \(visiting)")
+        }
         if scope.isSpringBreak { chips.append("Spring Break") }
         if locationService.prefersSquadRadar { chips.append("Squad Radar") }
         if matchManager.isQuestModeActive {

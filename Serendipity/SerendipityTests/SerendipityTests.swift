@@ -377,6 +377,134 @@ final class SerendipityTests: XCTestCase {
         XCTAssertFalse(dest.isLive(at: now), "a malformed window must fail closed")
     }
 
+    // MARK: - Visiting Campus (the Big Game rule)
+
+    func test_stanfordOnCal_canMeetCalHomeStudent() {
+        let calHome = TestProfiles.verifiedStudent(uid: "cal_kid", schoolId: "cal")
+        let stanfordVisiting = TestProfiles.visitingStudent(uid: "stanford_kid",
+                                                            homeSchoolId: "stanford",
+                                                            visiting: "cal")
+        XCTAssertTrue(CommunityGate.canShare(viewer: stanfordVisiting,
+                                             candidate: calHome,
+                                             in: .campus(schoolId: "cal")))
+        XCTAssertTrue(CommunityGate.canShare(viewer: calHome,
+                                             candidate: stanfordVisiting,
+                                             in: .campus(schoolId: "cal")))
+    }
+
+    func test_stanfordNotOnCal_cannotMeetCalHomeStudent() {
+        let calHome = TestProfiles.verifiedStudent(uid: "cal_kid", schoolId: "cal")
+        // Verified Stanford student, no presence claim on Cal.
+        let stanfordAtHome = TestProfiles.verifiedStudent(uid: "stanford_kid",
+                                                          schoolId: "stanford")
+        XCTAssertFalse(CommunityGate.canShare(viewer: stanfordAtHome,
+                                              candidate: calHome,
+                                              in: .campus(schoolId: "cal")),
+                       "wanting to be at Cal is not being at Cal")
+    }
+
+    func test_expiredVisitingClaimStopsQualifying() {
+        let now = Date()
+        let calHome = TestProfiles.verifiedStudent(uid: "cal_kid", schoolId: "cal")
+        let lapsed = TestProfiles.visitingStudent(uid: "stanford_kid",
+                                                  homeSchoolId: "stanford",
+                                                  visiting: "cal",
+                                                  expiresIn: -60)
+        XCTAssertFalse(lapsed.isPresent(onCampus: "cal", at: now))
+        XCTAssertFalse(CommunityGate.canShare(viewer: lapsed,
+                                              candidate: calHome,
+                                              in: .campus(schoolId: "cal")),
+                       "a lapsed claim must stop granting access with no cleanup pass")
+    }
+
+    func test_twoStanfordStudentsOnCal_canStillMeet() {
+        // Same-school pairs on a visited campus keep working.
+        let a = TestProfiles.visitingStudent(uid: "a", homeSchoolId: "stanford", visiting: "cal")
+        let b = TestProfiles.visitingStudent(uid: "b", homeSchoolId: "stanford", visiting: "cal")
+        XCTAssertTrue(CommunityGate.canShare(viewer: a, candidate: b,
+                                             in: .campus(schoolId: "cal")))
+    }
+
+    func test_twoCalStudentsOnCal_unchanged() {
+        // The ordinary case must be untouched by any of this.
+        let a = TestProfiles.verifiedStudent(uid: "a", schoolId: "cal")
+        let b = TestProfiles.verifiedStudent(uid: "b", schoolId: "cal")
+        XCTAssertTrue(CommunityGate.canShare(viewer: a, candidate: b,
+                                             in: .campus(schoolId: "cal")))
+    }
+
+    func test_townieWithNoSchool_cannotJoinACampusPool() {
+        let calHome = TestProfiles.verifiedStudent(uid: "cal_kid", schoolId: "cal")
+        var townie = TestProfiles.verifiedStudent(uid: "townie", schoolId: "cal")
+        townie.schoolId = nil
+        townie.enrollmentStatus = .unverified
+        XCTAssertFalse(CommunityGate.canShare(viewer: calHome, candidate: townie,
+                                              in: .campus(schoolId: "cal")))
+        XCTAssertFalse(CommunityGate.canShare(viewer: townie, candidate: calHome,
+                                              in: .campus(schoolId: "cal")))
+    }
+
+    func test_unverifiedStudentCannotVisit() {
+        // A presence claim does not substitute for the student ID.
+        let calHome = TestProfiles.verifiedStudent(uid: "cal_kid", schoolId: "cal")
+        var unverified = TestProfiles.visitingStudent(uid: "no_id",
+                                                      homeSchoolId: "stanford",
+                                                      visiting: "cal")
+        unverified.studentIDStatus = .none
+        XCTAssertFalse(CommunityGate.canShare(viewer: calHome, candidate: unverified,
+                                              in: .campus(schoolId: "cal")))
+    }
+
+    func test_visitingClaimIsCampusSpecific() {
+        // Confirmed on Cal is not confirmed on UCLA.
+        let visitor = TestProfiles.visitingStudent(uid: "v", homeSchoolId: "stanford",
+                                                   visiting: "cal")
+        XCTAssertTrue(visitor.isPresent(onCampus: "cal"))
+        XCTAssertFalse(visitor.isPresent(onCampus: "ucla"))
+        XCTAssertTrue(visitor.isPresent(onCampus: "stanford"), "home is always present")
+        XCTAssertTrue(visitor.isVisiting(campus: "cal"))
+        XCTAssertFalse(visitor.isVisiting(campus: "stanford"), "home is not visiting")
+    }
+
+    func test_homeStudentNeedsNoPresenceClaim() {
+        let home = TestProfiles.verifiedStudent(uid: "cal_kid", schoolId: "cal")
+        XCTAssertNil(home.campusPresenceSchoolId)
+        XCTAssertTrue(home.isPresent(onCampus: "cal"))
+    }
+
+    func test_springBreakPathStillWorksAlongsideVisiting() {
+        // The destination path is untouched: cross-school, no campus claim needed.
+        let ucla = TestProfiles.verifiedStudent(uid: "a", schoolId: "ucla")
+        let michigan = TestProfiles.verifiedStudent(uid: "b", schoolId: "michigan")
+        let scope = CommunityScope.springBreak(destinationId: "cancun",
+                                               displayLabel: "Cancun - Spring Break")
+        XCTAssertTrue(CommunityGate.canShare(viewer: ucla, candidate: michigan, in: scope))
+        // And they still cannot meet on a campus neither is on.
+        XCTAssertFalse(CommunityGate.canShare(viewer: ucla, candidate: michigan,
+                                              in: .campus(schoolId: "cal")))
+    }
+
+    func test_visitingDoesNotBypassDatingGate() {
+        // Stacking: visiting opens the pool, it does not open Dating.
+        var visitor = TestProfiles.visitingStudent(uid: "v", homeSchoolId: "stanford",
+                                                   visiting: "cal")
+        visitor.studentIDStatus = .verified   // ID checked, faces not matched
+        let calHome = TestProfiles.datingEligible(uid: "c", schoolId: "cal")
+        XCTAssertTrue(CommunityGate.canShare(viewer: visitor, candidate: calHome,
+                                             in: .campus(schoolId: "cal")))
+        XCTAssertFalse(CommunityGate.canShareForDating(viewer: visitor, candidate: calHome,
+                                                       in: .campus(schoolId: "cal")))
+    }
+
+    func test_visitingCampusPausedCopy() {
+        let status = VisitingCampusStatus.paused(displayName: "Cal", reason: .leftFence)
+        XCTAssertEqual(status.pausedMessage,
+                       "Left campus — Quest is only on a school fence.")
+        XCTAssertFalse(status.isActive)
+        XCTAssertNil(VisitingCampusStatus.inactive.pausedMessage)
+        XCTAssertTrue(VisitingCampusStatus.active(schoolId: "cal", displayName: "Cal").isActive)
+    }
+
     // MARK: - Encounter Slot Cap
 
     func test_thirdSessionIsRejected() {
@@ -581,6 +709,19 @@ enum TestProfiles {
         profile.studentIDStatus = .faceMatched
         profile.verifiedAge = 20
         profile.activeIntents = [.hangout, .study, .dating]
+        return profile
+    }
+
+    /// A verified student from `homeSchoolId` with a live presence claim on
+    /// another campus. `expiresIn` is seconds from now — pass a negative value
+    /// for a claim that has already lapsed.
+    static func visitingStudent(uid: String,
+                                homeSchoolId: String,
+                                visiting campusId: String,
+                                expiresIn: TimeInterval = 45 * 60) -> UserProfile {
+        var profile = verifiedStudent(uid: uid, schoolId: homeSchoolId)
+        profile.campusPresenceSchoolId = campusId
+        profile.campusPresenceExpiresAt = Timestamp(date: Date().addingTimeInterval(expiresIn))
         return profile
     }
 

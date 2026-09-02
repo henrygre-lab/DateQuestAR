@@ -17,8 +17,10 @@
 //     against the current CommunityScope before doing any work
 // [x] Off campus (and outside any live Spring Break fence) the scope is .none and
 //     every one of those paths returns empty — auto-pause, fail-closed
-// [x] Cross-school matching is reachable only inside a live, server-confirmed
-//     Spring Break destination; leaving it drops back to same-school
+// [x] Cross-school matching is reachable two ways, both requiring a live,
+//     server-issued and expiring presence claim: a campus the user is physically
+//     on that is not their own (the Big Game rule), or a Spring Break
+//     destination. Leaving either drops back to same-school.
 // [x] Gender-balance tools (asymmetric caps, women-first queue, waitlist) are
 //     applied ONLY when the encounter's locked intent overlap contains Dating —
 //     a Study or Hangout overlap is never gender-throttled
@@ -228,6 +230,12 @@ final class MatchManager: ObservableObject {
             Log.match.error("Campus geofence unavailable — Quest Mode stays paused")
         }
 
+        // Every allowlisted campus, not just this user's — the Big Game rule
+        // means any of them can become the active pool.
+        if let schools = try? await firestoreService.fetchSchools() {
+            LocationService.shared.configureVisitableCampuses(schools)
+        }
+
         if let destinations = try? await firestoreService.fetchActiveSpringBreakDestinations() {
             LocationService.shared.configureSpringBreakDestinations(destinations)
         }
@@ -317,15 +325,20 @@ final class MatchManager: ObservableObject {
               let partnerSchool = candidate.schoolId else { return nil }
 
         let destinationID: String?
+        let campusID: String?
         let matchScope: Match.MatchScope
         switch scope {
         case .none:
             return nil
-        case .campus:
+        case .campus(let schoolId):
+            // The campus they are both standing on, which under the Big Game
+            // rule may be neither person's own.
             destinationID = nil
+            campusID = schoolId
             matchScope = .campus
         case .springBreak(let id, _):
             destinationID = id
+            campusID = nil
             matchScope = .springBreak
         }
 
@@ -342,6 +355,7 @@ final class MatchManager: ObservableObject {
             partnerSchoolId: partnerSchool,
             scope: matchScope,
             springBreakDestinationID: destinationID,
+            campusId: campusID,
             lockedIntents: EncounterSession.lockIntents(currentUser, candidate),
             isDatingGated: EncounterSession.locksDatingGate(currentUser, candidate)
         )
@@ -947,6 +961,7 @@ final class MatchManager: ObservableObject {
             partnerSchoolId: candidate.schoolId ?? "",
             scope: communityScope.isSpringBreak ? .springBreak : .campus,
             springBreakDestinationID: nil,
+            campusId: currentUser.schoolId,
             lockedIntents: lockedIntents,
             isDatingGated: datingGated,
             revealStage: .blurred

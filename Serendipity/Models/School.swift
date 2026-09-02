@@ -10,7 +10,10 @@
 //     are the ONLY place names allowed in the UI (DESIGN_SYSTEM.md §8) — no
 //     neighbourhood, venue, landmark, building or geohash is ever shown
 // [x] Fail-closed pairing — CommunityGate returns false for .none scope, for any
-//     unverified party, and for any cross-school pair outside a live SB window
+//     unverified party, and for any cross-school pair without a live claim
+// [x] Visiting a campus requires a server-issued, expiring presence claim.
+//     isPresent() checks the expiry, so a lapsed claim stops qualifying with no
+//     write and no cleanup pass.
 // [x] SpringBreakStatus is presentation state only. It never widens a pool: when
 //     it is .paused the scope has already fallen back to campus or .none, and
 //     CommunityGate does not read it.
@@ -143,6 +146,62 @@ enum CommunityScope: Equatable {
     }
 }
 
+// MARK: - Visiting Campus Status
+
+/// Whether the device is confirmed on a campus that is not the user's own, and
+/// if not, why it stopped.
+///
+/// Deliberately a separate type from `SpringBreakStatus` rather than one shared
+/// "presence" enum. They follow the same pattern — claim, 15-minute refresh,
+/// explicit pause — but they answer different questions ("which campus am I
+/// visiting" versus "is the destination window live"), carry different copy, and
+/// the Spring Break path is working and frozen. Merging them would mean
+/// reworking a path that has nothing wrong with it to save two dozen lines.
+enum VisitingCampusStatus: Equatable {
+
+    /// Not visiting. Either on the home campus, or nowhere in particular.
+    case inactive
+
+    /// Server-confirmed presence on another school's campus.
+    case active(schoolId: String, displayName: String)
+
+    /// The visiting claim lapsed. The pool has already narrowed; this is what
+    /// tells the user so.
+    case paused(displayName: String, reason: PauseReason)
+
+    enum PauseReason: Equatable {
+        /// Walked off the campus fence.
+        case leftFence
+        /// Quest Mode was switched off, so presence stopped being refreshed.
+        case questModeOff
+        /// The backend declined or could not be reached on a refresh.
+        case refreshFailed
+    }
+
+    var isActive: Bool {
+        if case .active = self { return true }
+        return false
+    }
+
+    /// The campus being visited, for the Quest card title.
+    var schoolDisplayName: String? {
+        switch self {
+        case .inactive:                    return nil
+        case .active(_, let name):         return name
+        case .paused(let name, _):         return name
+        }
+    }
+
+    /// One line for Home and Radar. Nil unless paused.
+    ///
+    /// Says what happened and what the rule is, because "Quest stopped" without
+    /// "you have to be on a campus" reads like a bug rather than a boundary.
+    var pausedMessage: String? {
+        guard case .paused = self else { return nil }
+        return "Left campus — Quest is only on a school fence."
+    }
+}
+
 // MARK: - Spring Break Status
 
 /// Whether the cross-school Spring Break pool is open for this device, and if
@@ -234,12 +293,19 @@ enum CommunityGate {
             return false
 
         case .campus(let schoolId):
-            // Same school only. Both parties must belong to *this* campus, not
-            // merely to some campus — a Michigan student standing on the UCLA
-            // lawn is still out of pool.
-            guard let viewerSchool = viewer.schoolId,
-                  let candidateSchool = candidate.schoolId else { return false }
-            return viewerSchool == schoolId && candidateSchool == schoolId
+            // Both parties must be on *this* campus. Two ways to qualify, and
+            // the asymmetry is the point:
+            //
+            // - a home student, whose schoolId is this campus; or
+            // - a visitor from another allowlisted school holding a live,
+            //   server-issued presence claim on it.
+            //
+            // A Michigan student standing on the UCLA lawn is in pool now — that
+            // is the Big Game rule. A Michigan student who merely says they are
+            // is not, because the claim comes from the server and expires.
+            guard viewer.schoolId != nil, candidate.schoolId != nil else { return false }
+            return viewer.isPresent(onCampus: schoolId)
+                && candidate.isPresent(onCampus: schoolId)
 
         case .springBreak:
             // Cross-school, but school-verified only. Both parties already

@@ -14,7 +14,8 @@ rules_version = '2';
 //     Dating off must go through setActiveIntents, which sets the 24h cooldown.
 // [x] users/{uid}/verification/** is owner-read and function-write only; no other
 //     client can read a student ID path, school email or phone hash
-// [x] Cross-school reads require BOTH sides confirmed at the same live destination
+// [x] Cross-school reads require a shared campus — home or a live, expiring
+//     visiting claim — or BOTH sides confirmed at the same live destination
 // [x] encounter_sessions creates are denied outright. The two-per-user cap is a
 //     count across documents and rules cannot count, so session creation lives in
 //     openEncounterSession where the count and the write share a transaction.
@@ -74,6 +75,19 @@ service cloud.firestore {
       return isSignedIn() ? request.auth.token.get('sbDest', '') : '';
     }
 
+    // Campus the caller has been server-confirmed on when it is not their own.
+    // Empty for a home student — schoolId already places them on their campus.
+    function callerVisitingCampus() {
+      return isSignedIn() ? request.auth.token.get('campusPresence', '') : '';
+    }
+
+    // Whether the caller counts as present on `campusId`: home, or visiting with
+    // a live claim.
+    function callerIsOnCampus(campusId) {
+      return campusId != ''
+        && (campusId == callerSchoolId() || campusId == callerVisitingCampus());
+    }
+
     // School gate passed: a schoolId was issued and enrollment grants access.
     function isCommunityMember() {
       return isSignedIn()
@@ -112,6 +126,28 @@ service cloud.firestore {
     // Cross-school visibility needs all four: a live window, the caller confirmed
     // at that destination, the subject confirmed at the SAME destination, and the
     // subject school-verified. A local or an unverified tourist satisfies none.
+    // The Big Game rule.
+    //
+    // Two students share a campus when there is some campus each of them is on —
+    // either as a home student or as a confirmed visitor. A visiting claim must
+    // still be live: campusPresenceExpiresAt is checked here so a lapsed claim
+    // stops granting reads without anyone running a cleanup pass.
+    function subjectIsOnCampus(subject, campusId) {
+      return campusId != ''
+        && (
+          subject.get('schoolId', '') == campusId
+          || (
+            subject.get('campusPresenceSchoolId', '') == campusId
+            && subject.get('campusPresenceExpiresAt', request.time) > request.time
+          )
+        );
+    }
+
+    function sharesCampus(subject) {
+      return subjectIsOnCampus(subject, callerSchoolId())
+        || subjectIsOnCampus(subject, callerVisitingCampus());
+    }
+
     function sharesLiveDestination(subject) {
       return callerDestination() != ''
         && destinationIsLive(callerDestination())
@@ -141,6 +177,10 @@ service cloud.firestore {
         'datingCooldownUntil',
         'activeIntents',
         'springBreakDestinationId',
+        // Visiting presence is issued by confirmCampusPresence. A client that
+        // could write these could put itself on any campus in the country.
+        'campusPresenceSchoolId',
+        'campusPresenceExpiresAt',
         'balanceBoostMultiplier',
         'alertCapPerHour',
         'waitlistEntryTime',
@@ -166,6 +206,7 @@ service cloud.firestore {
         && request.resource.data.get('verifiedAge', null) == null
         && request.resource.data.get('datingCooldownUntil', null) == null
         && request.resource.data.get('springBreakDestinationId', null) == null
+        && request.resource.data.get('campusPresenceSchoolId', null) == null
         && request.resource.data.uid == request.auth.uid;
     }
 
@@ -190,7 +231,8 @@ service cloud.firestore {
       // caller's community fails as a whole rather than returning a filtered set.
       // That is what forces the client to constrain its nearby query by schoolId.
       allow get, list: if isSelf(uid)
-        || (isQuestEligible() && resource.data.get('schoolId', '') == callerSchoolId())
+        // Home students of a campus the caller is on, and confirmed visitors to it.
+        || (isQuestEligible() && sharesCampus(resource.data))
         || (isQuestEligible() && sharesLiveDestination(resource.data));
 
       allow create: if isSelf(uid)
@@ -243,7 +285,17 @@ service cloud.firestore {
       return data.get('schoolId', '') == callerSchoolId()
         && callerSchoolId() != ''
         && (
+          // Same school.
           data.get('partnerSchoolId', '') == callerSchoolId()
+          // Or a campus both are standing on — the Big Game rule. The caller's
+          // half is checked here; the partner's half needs a second profile read
+          // and is done in openEncounterSession, which is the only creator of
+          // sessions and can afford it.
+          || (
+            data.get('scope', 'campus') == 'campus'
+            && callerIsOnCampus(data.get('campusId', ''))
+          )
+          // Or a live Spring Break destination both are confirmed at.
           || (
             data.get('scope', 'campus') == 'springBreak'
             && callerDestination() != ''
@@ -265,7 +317,8 @@ service cloud.firestore {
     // cross-school match onto a campus scope after the window shut.
     function lockedMatchFields() {
       return ['userAUID', 'userBUID', 'schoolId', 'partnerSchoolId', 'scope',
-              'springBreakDestinationID', 'lockedIntents', 'isDatingGated', 'createdAt'];
+              'springBreakDestinationID', 'campusId', 'lockedIntents',
+              'isDatingGated', 'createdAt'];
     }
 
     match /matches/{matchId} {
@@ -296,7 +349,7 @@ service cloud.firestore {
     function lockedSessionFields() {
       return ['matchID', 'userAUID', 'userBUID', 'schoolId', 'partnerSchoolId',
               'scope', 'springBreakDestinationID', 'lockedIntents', 'isDatingGated',
-              'startTimestamp',
+              'startTimestamp', 'campusId',
               // Slot accounting is server-owned. A client that could write these
               // could free its own slot without ending the encounter, or open a
               // third one — which is the entire cap.

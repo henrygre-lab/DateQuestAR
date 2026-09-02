@@ -27,6 +27,8 @@ export {
   reviewEnrollmentProof,
   confirmDestinationPresence,
   clearDestinationPresence,
+  confirmCampusPresence,
+  clearCampusPresence,
 } from "./schoolGate";
 
 // MARK: - Student ID + Liveness (Quest Mode, Dating and NameDrop gates)

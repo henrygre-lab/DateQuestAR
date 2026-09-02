@@ -2,9 +2,13 @@
 // [x] No hardcoded secrets, API keys, or tokens
 // [x] All Firestore writes require Firebase Auth UID ownership check
 // [x] schoolId, enrollmentStatus, studentIDStatus, verifiedAge, trustLevel,
-//     accountStatus and datingCooldownUntil are server-authoritative — issued by
+//     accountStatus, datingCooldownUntil, campusPresenceSchoolId and
+//     campusPresenceExpiresAt are server-authoritative — issued by
 //     schoolGate.ts / studentIdVerification.ts and rejected on client write by
 //     firestore.rules. The client reads them and never self-promotes.
+// [x] Visiting-campus presence is a server-issued claim with an expiry, not a
+//     self-declared field: a client that could write campusPresenceSchoolId
+//     could put itself on any campus in the country
 // [x] No student ID image, liveness frame, phone number or school email on this
 //     type — those live on users/{uid}/verification/** (owner-only) and are
 //     therefore absent from every nearby and match payload built from a profile
@@ -57,6 +61,19 @@ struct UserProfile: Identifiable, Codable {
 
     /// Server-authoritative. Only `.enrolled` and `.incoming` enter a community.
     var enrollmentStatus: EnrollmentStatus = .unverified
+
+    /// The campus this user has been server-confirmed to be physically standing
+    /// on, when it is not their own. Written by `confirmCampusPresence` and
+    /// cleared when they leave — the visiting half of the Big Game rule.
+    ///
+    /// Nil for the overwhelmingly common case of a student on their own campus:
+    /// `schoolId` already says where they belong, and a home student needs no
+    /// second claim to be visible there.
+    var campusPresenceSchoolId: String?
+
+    /// When the visiting claim lapses. Server-written; refreshed every 15 minutes
+    /// while the user is still inside the fence.
+    var campusPresenceExpiresAt: Timestamp?
 
     /// Server-authoritative result of the student ID card photo + liveness check.
     /// The images themselves never reach this document.
@@ -208,6 +225,33 @@ extension UserProfile {
     /// nothing about age, so the face-match age is the one that counts.
     var canUseDatingIntent: Bool {
         canStartQuestMode && studentIDStatus.isFaceMatched && isVerifiedAdult
+    }
+
+    /// Whether this user counts as being on campus `schoolId`.
+    ///
+    /// Two ways to be on a campus, and they are not symmetric:
+    ///
+    /// - **Home.** Your own `schoolId` matches. No presence claim needed — this
+    ///   is how the same-school pool has always worked, and requiring a claim
+    ///   would break every student standing on their own quad.
+    /// - **Visiting.** A different school, plus a live server-issued presence
+    ///   claim on this one. That claim is the entire Big Game rule: it is what
+    ///   separates a Stanford student actually at Cal from a Stanford student
+    ///   who would quite like to be.
+    ///
+    /// The visiting branch checks the expiry, so a lapsed claim stops counting
+    /// without anyone having to clear it.
+    func isPresent(onCampus schoolId: String, at now: Date = Date()) -> Bool {
+        guard !schoolId.isEmpty else { return false }
+        if self.schoolId == schoolId { return true }
+        guard campusPresenceSchoolId == schoolId else { return false }
+        guard let expiry = campusPresenceExpiresAt?.dateValue() else { return false }
+        return now < expiry
+    }
+
+    /// True when this user is on a campus that is not their own.
+    func isVisiting(campus schoolId: String, at now: Date = Date()) -> Bool {
+        self.schoolId != schoolId && isPresent(onCampus: schoolId, at: now)
     }
 
     /// NameDrop exchanges real identity, so it carries the Dating-tier proof

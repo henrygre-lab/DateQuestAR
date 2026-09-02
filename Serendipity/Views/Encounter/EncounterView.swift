@@ -204,6 +204,7 @@ struct EncounterView: View {
             stage: stage,
             trust: shownTrust,
             isIDVerified: isIDVerified,
+            school: partner?.schoolDisplayName,
             sessionCode: sessionCode
         )
     }

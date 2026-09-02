@@ -16,6 +16,14 @@ struct RevealHero: View {
     let stage: RevealStage
     let trust: UserProfile.TrustLevel
     let isIDVerified: Bool
+
+    /// The partner's school, e.g. "Stanford".
+    ///
+    /// Load-bearing under the Big Game rule: on a visiting campus the pool is
+    /// mixed, and this is the only thing telling you which side of it someone is
+    /// on. Community identity, which DESIGN_SYSTEM.md §8 permits — never a
+    /// building, venue or neighbourhood.
+    var school: String?
     /// Display-only short code derived from the match id.
     let sessionCode: String
 
@@ -59,6 +67,9 @@ struct RevealHero: View {
                         symbolColor: trust.dq.color(p),
                         text: trust.dq.name
                     )
+                    if let school, !school.isEmpty {
+                        GlassChip(symbol: "graduationcap.fill", text: school, weight: .semibold)
+                    }
                     if isIDVerified {
                         GlassChip(text: "ID verified", weight: .semibold)
                     }

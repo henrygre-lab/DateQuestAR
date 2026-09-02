@@ -6,6 +6,8 @@
 // [x] The radar shows only what MatchManager surfaced, which is already
 //     community-gated: same school, or the same live Spring Break destination
 // [x] Off campus the scope is .none, nearbyUsers is empty, and this screen says so
+// [x] A lapsed visiting-campus claim is surfaced here too — the radar is where
+//     someone would otherwise sit watching a pool that has already narrowed
 // [x] The encounter slot cap is surfaced here too — the radar is where a user
 //     would otherwise sit watching signals that will never alert them
 // [x] A lapsed Spring Break claim is surfaced here too. The radar is where the
@@ -41,6 +43,7 @@ struct RadarView: View {
     /// one of these the user can act on.
     private var voiceOverStatusLine: String {
         if matchManager.isAtSessionCap { return Self.sessionCapMessage }
+        if let paused = locationService.visitingCampusStatus.pausedMessage { return paused }
         if let paused = locationService.springBreakStatus.pausedMessage { return paused }
         guard locationService.communityScope.allowsQuestMode else { return "Paused — off campus" }
         return "\(matchManager.nearbyUsers.count) nearby matches"
@@ -60,7 +63,8 @@ struct RadarView: View {
         // the two, and stacking banners over the ring buries the readout.
         if let message = matchManager.isAtSessionCap
             ? Self.sessionCapMessage
-            : locationService.springBreakStatus.pausedMessage {
+            : (locationService.visitingCampusStatus.pausedMessage
+               ?? locationService.springBreakStatus.pausedMessage) {
             Text(message)
                 .font(DQ.Typography.caption())
                 .foregroundStyle(DQ.Colors.textPrimary)

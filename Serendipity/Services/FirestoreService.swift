@@ -9,10 +9,11 @@
 // [x] Streak bonuses are deterministic and server-verifiable
 // [x] XP reason logged for debugging only — no PII in reason strings
 // [x] Waitlist operations are read-only on client; writes via Cloud Functions
-// [x] Same-school gate on every nearby read — fetchNearbyUsers takes a
-//     CommunityScope and constrains the query by schoolId, or by a
-//     server-confirmed Spring Break destination. firestore.rules evaluates the
-//     same predicate per document, so an unconstrained query fails outright.
+// [x] Community gate on every nearby read — fetchNearbyUsers takes a
+//     CommunityScope and constrains the query to one campus (home students plus
+//     server-confirmed visitors) or one Spring Break destination.
+//     firestore.rules evaluates the same predicate per document, so an
+//     unconstrained query fails outright rather than returning a filtered set.
 // [x] Profile writes are field-whitelisted — saveProfileEdits never sends
 //     schoolId, enrollmentStatus, studentIDStatus, verifiedAge, trustLevel,
 //     accountStatus, activeIntents or datingCooldownUntil, all of which are
@@ -146,35 +147,61 @@ final class FirestoreService {
         }
         #endif
 
-        let query: Query
         switch scope {
         case .none:
             return []
 
         case .campus(let schoolId):
             guard !schoolId.isEmpty else { return [] }
-            query = usersCollection
-                .whereField("schoolId", isEqualTo: schoolId)
-                .whereField("accountStatus", isEqualTo: AccountStatus.active.rawValue)
-                .whereField("privacySettings.questModeEnabled", isEqualTo: true)
+
+            // Two queries, not one. The campus pool is "home students of X" OR
+            // "visitors confirmed on X", and Firestore has no disjunction across
+            // two different fields — a single query cannot express it. The union
+            // is done here and deduplicated by uid.
+            //
+            // Both halves are separately legal under firestore.rules, which
+            // evaluates its read predicate per document: a query that reached
+            // beyond the caller's campus would fail as a whole, not return a
+            // filtered set.
+            async let homeStudents = fetchNearbyPage(
+                field: "schoolId", equals: schoolId
+            )
+            async let visitors = fetchNearbyPage(
+                field: "campusPresenceSchoolId", equals: schoolId
+            )
+
+            var byUID: [String: UserProfile] = [:]
+            for profile in try await homeStudents + visitors where profile.uid != excludeUID {
+                byUID[profile.uid] = profile
+            }
+            return Array(byUID.values)
 
         case .springBreak(let destinationId, _):
             // Cross-school, but only among users the backend has confirmed at
             // this same destination. A local or an unverified tourist has no
             // springBreakDestinationId and cannot appear here.
             guard !destinationId.isEmpty else { return [] }
-            query = usersCollection
-                .whereField("springBreakDestinationId", isEqualTo: destinationId)
-                .whereField("accountStatus", isEqualTo: AccountStatus.active.rawValue)
-                .whereField("privacySettings.questModeEnabled", isEqualTo: true)
-        }
-
-        // TODO: Use GeoFire or geohash range queries for efficient proximity search
-        let snapshot = try await query.limit(to: 50).getDocuments()
-
-        return try snapshot.documents
-            .compactMap { try $0.data(as: UserProfile.self) }
+            return try await fetchNearbyPage(
+                field: "springBreakDestinationId", equals: destinationId
+            )
             .filter { $0.uid != excludeUID }
+        }
+    }
+
+    /// One page of Quest-enabled, active users matching a single equality filter.
+    ///
+    /// Shared by the home, visiting and Spring Break halves so the account-status
+    /// and Quest-Mode conditions cannot drift apart between them.
+    // TODO: Use GeoFire or geohash range queries for efficient proximity search
+    private func fetchNearbyPage(field: String, equals value: String) async throws -> [UserProfile] {
+        let snapshot = try await usersCollection
+            .whereField(field, isEqualTo: value)
+            .whereField("accountStatus", isEqualTo: AccountStatus.active.rawValue)
+            .whereField("privacySettings.questModeEnabled", isEqualTo: true)
+            .limit(to: 50)
+            .getDocuments()
+
+        return try snapshot.documents.compactMap { try $0.data(as: UserProfile.self) }
     }
 
     // MARK: - Schools & Destinations (read-only reference data)

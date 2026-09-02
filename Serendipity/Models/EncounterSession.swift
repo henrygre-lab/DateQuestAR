@@ -85,6 +85,12 @@ struct EncounterSession: Identifiable, Codable {
     /// Destination that authorised a cross-school session, nil on campus.
     var springBreakDestinationID: String?
 
+    /// The campus this session opened on. Under the Big Game rule it may be
+    /// neither participant's own. Server-written and immutable
+    /// (`firestore.rules`), so a session cannot be relabelled onto another campus
+    /// after the fact.
+    var campusId: String?
+
     // MARK: - Encounter Slots
     //
     // The scarcity mechanic. Two active encounters per person, because the thing

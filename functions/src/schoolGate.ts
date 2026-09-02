@@ -17,6 +17,12 @@
 // [x] Destination presence is verified server-side against the destination's own
 //     geofence and server-dated window; the client supplies a geohash, never a
 //     polygon and never a raw coordinate
+// [x] Campus presence (the Big Game rule) uses the same mechanism against the
+//     school document's own campus fence. Both claims expire, and both are
+//     refused unless the caller is already Quest-eligible — standing somewhere
+//     is necessary but never sufficient.
+// [x] A home student is never issued a visiting claim; schoolId already places
+//     them in their own campus pool
 
 import * as admin from "firebase-admin";
 import { onCall, HttpsError, CallableRequest } from "firebase-functions/v2/https";
@@ -39,6 +45,16 @@ const DESTINATION_CHECKINS_PER_HOUR = 12;
 // re-confirm. Short by design: the sbDest claim is what opens the cross-school
 // pool, so it must expire rather than linger after someone flies home.
 const DESTINATION_PRESENCE_TTL_MINUTES = 45;
+
+/**
+ * How long a confirmed *campus* presence lasts before the client must
+ * re-confirm. Same reasoning and same number as the destination TTL: the claim
+ * is what opens a cross-school pool, so it has to expire rather than linger
+ * after someone drives home from the Big Game.
+ */
+const CAMPUS_PRESENCE_TTL_MINUTES = 45;
+
+const CAMPUS_CHECKINS_PER_HOUR = 12;
 
 type EnrollmentStatus =
   | "unverified"
@@ -563,6 +579,110 @@ export const confirmDestinationPresence = onCall(async (request) => {
     expiresAt: expiresAt.toMillis(),
     requiresTokenRefresh: true,
   };
+});
+
+// MARK: - confirmCampusPresence
+//
+// The Big Game rule: a school-verified student may Quest on any allowlisted
+// campus they are physically standing on, not only their own.
+//
+// Same shape as confirmDestinationPresence, and deliberately so — one presence
+// mechanism, two targets. The client sends a precision-7 geohash; the server
+// decodes it, compares it against the *school document's* own campus centre and
+// radius, and only then issues the claim that puts the user in that campus's
+// pool. There is no client-supplied fence and no way to assert presence without
+// passing this check.
+
+export const confirmCampusPresence = onCall(async (request) => {
+  const uid = requireAuth(request);
+  await consumeRateLimit(uid, "campuscheckin", CAMPUS_CHECKINS_PER_HOUR);
+
+  const schoolId = request.data?.schoolId;
+  const geohash = request.data?.geohash;
+  if (typeof schoolId !== "string" || schoolId.length === 0 || schoolId.length > 128) reject();
+  if (typeof geohash !== "string") reject();
+
+  // Only a Quest-eligible student can stand in anyone's pool, home or visiting.
+  // Being physically present is necessary, not sufficient.
+  const claims = (await admin.auth().getUser(uid)).customClaims ?? {};
+  const enrollment = claims.enrollmentStatus as string | undefined;
+  const studentID = claims.studentIDStatus as string | undefined;
+  const homeSchoolId = claims.schoolId as string | undefined;
+  const eligible =
+    typeof homeSchoolId === "string" &&
+    homeSchoolId.length > 0 &&
+    (enrollment === "enrolled" || enrollment === "incoming") &&
+    (studentID === "verified" || studentID === "faceMatched");
+  if (!eligible) reject();
+
+  const schoolSnap = await db.collection("schools").doc(schoolId).get();
+  if (!schoolSnap.exists) reject();
+
+  const school = schoolSnap.data() as SchoolDoc;
+  if (school.isActive !== true) reject();
+
+  const here = decodeGeohash(geohash);
+  const there = decodeGeohash(school.campus?.centerGeohash ?? "");
+  if (!here || !there) reject();
+
+  const GEOHASH_CELL_SLACK_METERS = 150;
+  const radius = school.campus?.radiusMeters ?? 0;
+  if (radius <= 0) reject();
+  if (metersBetween(here, there) > radius + GEOHASH_CELL_SLACK_METERS) reject();
+
+  const expiresAt = admin.firestore.Timestamp.fromMillis(
+    Date.now() + CAMPUS_PRESENCE_TTL_MINUTES * 60 * 1000
+  );
+
+  // A student on their own campus needs no visiting claim — schoolId already
+  // puts them in that pool, and writing one would make every home student look
+  // like a visitor to the rules.
+  const isVisiting = schoolId !== homeSchoolId;
+
+  if (isVisiting) {
+    await db.collection("users").doc(uid).set(
+      {
+        campusPresenceSchoolId: schoolId,
+        campusPresenceExpiresAt: expiresAt,
+      },
+      { merge: true }
+    );
+    await admin.auth().setCustomUserClaims(uid, { ...claims, campusPresence: schoolId });
+  }
+
+  console.info(`[confirmCampusPresence] ${uid} -> ${schoolId} (visiting=${isVisiting})`);
+
+  return {
+    schoolId,
+    schoolDisplayName: school.displayName,
+    isVisiting,
+    expiresAt: expiresAt.toMillis(),
+    requiresTokenRefresh: isVisiting,
+  };
+});
+
+// MARK: - clearCampusPresence
+//
+// Called when the visiting claim lapses or the user leaves the fence. Drops the
+// claim and the profile flag together, so no cross-school visibility survives
+// the drive home.
+
+export const clearCampusPresence = onCall(async (request) => {
+  const uid = requireAuth(request);
+
+  const claims = (await admin.auth().getUser(uid)).customClaims ?? {};
+  delete claims.campusPresence;
+  await admin.auth().setCustomUserClaims(uid, claims);
+
+  await db.collection("users").doc(uid).set(
+    {
+      campusPresenceSchoolId: null,
+      campusPresenceExpiresAt: null,
+    },
+    { merge: true }
+  );
+
+  return { cleared: true, requiresTokenRefresh: true };
 });
 
 // MARK: - clearDestinationPresence

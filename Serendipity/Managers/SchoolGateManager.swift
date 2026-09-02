@@ -264,6 +264,50 @@ final class SchoolGateManager: ObservableObject {
         }
     }
 
+    // MARK: - Campus Presence (the Big Game rule)
+
+    /// Asks the backend to confirm the device is standing on a given campus.
+    ///
+    /// Same mechanism as destination presence, aimed at a `schools/{id}` fence
+    /// instead: a precision-7 geohash goes up, the server decodes it against the
+    /// school document's own centre and radius, and only then issues the claim
+    /// that puts the user in that campus's pool.
+    ///
+    /// Returns the campus display name on success. A home student gets a
+    /// confirmation with `isVisiting` false and no claim — their `schoolId`
+    /// already places them there, and issuing one would make them look like a
+    /// visitor to the security rules.
+    func confirmCampusPresence(schoolId: String, geohash: String) async -> (name: String, isVisiting: Bool)? {
+        do {
+            let result = try await functions
+                .httpsCallable("confirmCampusPresence")
+                .call(["schoolId": schoolId, "geohash": geohash])
+
+            let payload = result.data as? [String: Any]
+            let isVisiting = payload?["isVisiting"] as? Bool ?? false
+
+            // Only a visiting confirmation mints a claim, so only that one needs
+            // the token refreshed before firestore.rules will honour it.
+            if isVisiting { await refreshClaims() }
+
+            guard let name = payload?["schoolDisplayName"] as? String else { return nil }
+            Log.school.debug("Campus presence confirmed")
+            return (name, isVisiting)
+        } catch {
+            // Being off every campus is the normal state for most people most of
+            // the time; this is not an error worth surfacing on its own.
+            Log.school.debug("Campus presence not confirmed")
+            return nil
+        }
+    }
+
+    /// Drops a visiting claim when the user leaves the campus or it lapses.
+    func clearCampusPresence() async {
+        _ = try? await functions.httpsCallable("clearCampusPresence").call()
+        await refreshClaims()
+        Log.school.debug("Campus presence cleared")
+    }
+
     /// Drops destination presence when the window closes or the user leaves.
     /// Clears both the claim and the profile flag, so no cross-school visibility
     /// survives the trip home.

@@ -8,9 +8,13 @@
 // [x] Both participants are counted. A session occupies a slot for each of them,
 //     so a popular user cannot be pulled into more encounters than they have room
 //     for by other people opening sessions against them.
-// [x] Same-school gate re-checked here against the caller's custom claims, not
+// [x] Community gate re-checked here against the caller's custom claims, not
 //     the match document alone: the match was validated when it was written, and
-//     a school can be revoked after that.
+//     a school, a student ID or a visiting claim can lapse after that.
+// [x] Cross-campus pairs are verified on BOTH sides — the caller from their
+//     claims, the partner from their profile. firestore.rules can only vouch for
+//     the caller, so the second half is done here, in the only place that
+//     creates sessions.
 // [x] participantUIDs, slotState, closedReason and closedAt are server-written
 // [x] Sessions always open at revealStage 'blurred' — no earlier photo access
 // [x] Generic errors to the caller; the distinction between "you are full" and
@@ -140,14 +144,30 @@ export const openEncounterSession = onCall(async (request) => {
   }
 
   if (match.partnerSchoolId !== callerSchoolId) {
-    // Cross-school is legal only inside a live destination the caller is
-    // confirmed at — the same condition firestore.rules applies.
+    // Cross-school needs one of two live authorisations. Both are checked here
+    // for *both* participants — rules can only vouch for the caller, because
+    // checking the partner needs a second profile read.
+    const campusId = match.campusId;
     const destId = match.springBreakDestinationID;
-    const callerDest = claim(request, "sbDest", "");
-    if (
+
+    if (match.scope === "campus") {
+      // The Big Game rule. Both people must be standing on the same campus:
+      // home there, or holding a live visiting claim on it.
+      if (typeof campusId !== "string" || campusId.length === 0) {
+        throw new HttpsError("permission-denied", "That encounter is no longer available.");
+      }
+      const callerOnCampus =
+        campusId === callerSchoolId || campusId === claim(request, "campusPresence", "");
+      if (!callerOnCampus) {
+        throw new HttpsError("permission-denied", "That encounter is no longer available.");
+      }
+      if (!(await isOnCampus(partnerUID, campusId))) {
+        throw new HttpsError("permission-denied", "That encounter is no longer available.");
+      }
+    } else if (
       match.scope !== "springBreak" ||
       typeof destId !== "string" ||
-      destId !== callerDest ||
+      destId !== claim(request, "sbDest", "") ||
       !(await destinationIsLive(destId))
     ) {
       throw new HttpsError("permission-denied", "That encounter is no longer available.");
@@ -197,6 +217,7 @@ export const openEncounterSession = onCall(async (request) => {
       schoolId: match.schoolId,
       partnerSchoolId: match.partnerSchoolId,
       scope: match.scope ?? "campus",
+      campusId: match.campusId ?? null,
       springBreakDestinationID: match.springBreakDestinationID ?? null,
       lockedIntents: match.lockedIntents ?? [],
       isDatingGated: match.isDatingGated === true,
@@ -231,6 +252,25 @@ export const openEncounterSession = onCall(async (request) => {
   console.info(`[openEncounterSession] ${uid} <-> ${partnerUID} (${outcome.status})`);
   return { sessionId: outcome.sessionId, status: outcome.status };
 });
+
+/**
+ * Whether `uid` counts as being on `campusId` right now.
+ *
+ * Home students qualify on schoolId alone; visitors need a live, unexpired
+ * claim. Read from the profile rather than a token, because this is the
+ * *partner's* state and their token is not available here.
+ */
+async function isOnCampus(uid: string, campusId: string): Promise<boolean> {
+  const snap = await db.collection("users").doc(uid).get();
+  if (!snap.exists) return false;
+  const user = snap.data() ?? {};
+
+  if (user.schoolId === campusId) return true;
+  if (user.campusPresenceSchoolId !== campusId) return false;
+
+  const expiry = user.campusPresenceExpiresAt as admin.firestore.Timestamp | undefined;
+  return expiry != null && expiry.toMillis() > Date.now();
+}
 
 /** Whether a Spring Break destination is switched on and inside its window. */
 async function destinationIsLive(destinationId: string): Promise<boolean> {

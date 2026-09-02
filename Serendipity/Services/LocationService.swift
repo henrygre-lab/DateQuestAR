@@ -8,8 +8,12 @@
 //     starts at .none and only a positive containment test moves it off.
 // [x] Campus and destination geofences come from backend documents; there is no
 //     client-authored polygon and no client-authored window
-// [x] Cross-school visibility requires a server confirmation round-trip
-//     (confirmDestinationPresence) — detecting the fence locally is not enough
+// [x] Cross-school visibility requires a server confirmation round-trip —
+//     confirmDestinationPresence for a Spring Break fence, confirmCampusPresence
+//     for another school's campus. Detecting a fence locally is never enough.
+// [x] Visiting presence follows the same shape as destination presence: an
+//     expiring claim, a 15-minute refresh, and an explicit paused state. It is
+//     never allowed to lapse silently.
 // [x] Leaving a destination clears presence server-side, so no cross-school radar
 //     survives the trip home
 // [x] The sbDest claim is short-lived and is re-confirmed every 15 minutes while
@@ -63,6 +67,37 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
     /// The user's own campus, from `schools/{schoolId}`.
     private var campus: (schoolId: String, geofence: CampusGeofence)?
 
+    /// Every allowlisted campus, so a student can Quest on one that is not their
+    /// own — the Big Game rule.
+    ///
+    /// Only the home campus gets a monitored `CLCircularRegion`: iOS caps an app
+    /// at 20 regions, and a national school list would blow that on its own.
+    /// Visiting campuses are detected by containment on location updates, which
+    /// is exactly when it matters — Quest Mode is scanning, so updates are
+    /// flowing. The trade-off is that walking onto another campus with the app
+    /// asleep is noticed on the next update rather than instantly.
+    private var allCampuses: [School] = []
+
+    /// The campus currently being visited, once the server has confirmed it.
+    private var confirmedVisitingCampus: School?
+
+    /// Whether the device is confirmed on a campus that is not the user's own,
+    /// and if not, why it stopped.
+    @Published private(set) var visitingCampusStatus: VisitingCampusStatus = .inactive
+
+    /// Local hour after which a visiting campus takes the night posture.
+    ///
+    /// A constant rather than a per-school field: `schools/{id}` has no dusk hour
+    /// and adding one would need every school document reseeded. Matches the
+    /// Spring Break destinations' own default.
+    private static let visitingDuskLocalHour = 20
+
+    /// Tightened Quest radius after dusk while visiting, in miles.
+    private static let visitingDuskRadiusMiles = 0.1
+
+    private var campusRefreshTask: Task<Void, Never>?
+    private var suppressCampusClaims = false
+
     /// Live-window destinations, from `spring_break_destinations`.
     private var springBreakDestinations: [SpringBreakDestination] = []
 
@@ -96,16 +131,26 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
     /// Quest radius in miles for the current scope. Tightens after dusk inside a
     /// Spring Break destination.
     var currentQuestRadiusMiles: Double {
-        guard let destination = confirmedDestination, destination.isAfterDusk() else {
-            return 0.25
+        if let destination = confirmedDestination, destination.isAfterDusk() {
+            return destination.duskRadiusMiles
         }
-        return destination.duskRadiusMiles
+        if isVisitingAfterDusk { return Self.visitingDuskRadiusMiles }
+        return 0.25
     }
 
-    /// True when the UI should default to Squad Radar: after dusk at a
-    /// destination, where people arrive in groups and should stay in them.
+    /// True when the UI should default to Squad Radar.
+    ///
+    /// After dusk at a Spring Break destination, and after dusk on a campus that
+    /// is not your own. Both are the same situation: you are somewhere you do
+    /// not know, at night, among people you have never seen before.
     var prefersSquadRadar: Bool {
-        confirmedDestination?.isAfterDusk() ?? false
+        (confirmedDestination?.isAfterDusk() ?? false) || isVisitingAfterDusk
+    }
+
+    /// Whether the user is on someone else's campus after dark.
+    private var isVisitingAfterDusk: Bool {
+        guard visitingCampusStatus.isActive else { return false }
+        return Calendar.current.component(.hour, from: Date()) >= Self.visitingDuskLocalHour
     }
 
     private override init() {
@@ -140,6 +185,7 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
         // Quest Mode coming back on is a real signal that a retry is worth
         // making, so a previous pause stops suppressing claims here.
         suppressDestinationClaims = false
+        suppressCampusClaims = false
         reevaluateScope()
 
         Log.location.debug("Quest scanning started.")
@@ -157,6 +203,12 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
             Task { @MainActor in await pauseSpringBreak(.questModeOff) }
         } else {
             stopDestinationRefresh()
+        }
+
+        if confirmedVisitingCampus != nil {
+            Task { @MainActor in await pauseVisitingCampus(.questModeOff) }
+        } else {
+            stopCampusRefresh()
         }
 
         Log.location.debug("Quest scanning stopped.")
@@ -212,6 +264,16 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
         reevaluateScope()
     }
 
+    /// Records every allowlisted campus so a student can Quest on one that is
+    /// not their own.
+    ///
+    /// No regions are armed for these — see `allCampuses` for why. Containment is
+    /// evaluated on location updates instead.
+    func configureVisitableCampuses(_ schools: [School]) {
+        allCampuses = schools.filter { $0.isActive && $0.id != nil }
+        reevaluateScope()
+    }
+
     /// Arms the live Spring Break destination fences.
     ///
     /// Only destinations whose server-dated window is currently live are armed.
@@ -264,12 +326,40 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
                 Task { @MainActor in await pauseSpringBreak(.leftFence) }
                 return
             }
+            if confirmedVisitingCampus != nil {
+                Task { @MainActor in await pauseVisitingCampus(.leftFence) }
+                return
+            }
             // Home campus is not a paused state — it is the normal one. Clearing
-            // the status here stops a stale "Spring Break paused" banner
-            // following the user back to their own school.
+            // both statuses here stops a stale banner following the user back to
+            // their own school.
             springBreakStatus = .inactive
+            visitingCampusStatus = .inactive
             suppressDestinationClaims = false
+            suppressCampusClaims = false
             setScope(.campus(schoolId: campus.schoolId))
+            return
+        }
+
+        // Standing on someone else's campus. Checked before Spring Break because
+        // a campus is a stronger, year-round signal than a dated window, and the
+        // two are unlikely to overlap anyway.
+        if let visiting = allCampuses.first(where: { school in
+            school.id != campus?.schoolId
+                && containsLocation(location,
+                                    geohash: school.campus.centerGeohash,
+                                    radius: school.campus.radiusMeters)
+        }) {
+            if suppressCampusClaims {
+                setScope(.none)
+                return
+            }
+            Task { @MainActor in await claimVisitingCampus(visiting) }
+            return
+        }
+
+        if confirmedVisitingCampus != nil {
+            Task { @MainActor in await pauseVisitingCampus(.leftFence) }
             return
         }
 
@@ -341,6 +431,116 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
         confirmedDestination = nil
         stopDestinationRefresh()
         await SchoolGateManager.shared.clearDestinationPresence()
+    }
+
+    // MARK: - Visiting Campus Presence
+
+    /// Confirms presence on another school's campus and opens its pool.
+    ///
+    /// Being inside the fence is necessary but not sufficient: the pool opens on
+    /// a claim only `confirmCampusPresence` can issue, after it re-checks the
+    /// school document's own centre and radius. A tampered client that skips this
+    /// call holds a claimless token and reads nothing.
+    @MainActor
+    private func claimVisitingCampus(_ school: School) async {
+        guard let schoolId = school.id else { return }
+        guard confirmedVisitingCampus?.id != schoolId else { return }
+        guard let geohash = currentGeohash else { return }
+
+        guard let confirmation = await SchoolGateManager.shared
+            .confirmCampusPresence(schoolId: schoolId, geohash: geohash) else {
+            confirmedVisitingCampus = school
+            await pauseVisitingCampus(.refreshFailed)
+            return
+        }
+
+        confirmedVisitingCampus = school
+        visitingCampusStatus = .active(schoolId: schoolId, displayName: confirmation.name)
+        setScope(.campus(schoolId: schoolId))
+        startCampusRefresh()
+    }
+
+    /// Re-confirms the visiting claim every 15 minutes, inside its 45-minute TTL.
+    ///
+    /// Identical cadence and reasoning to the destination refresh: an unrefreshed
+    /// claim would expire silently and the pool would narrow with nothing on
+    /// screen to explain it.
+    private func startCampusRefresh() {
+        stopCampusRefresh()
+        campusRefreshTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(Self.destinationRefreshSeconds * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+                await self?.refreshVisitingCampus()
+            }
+        }
+    }
+
+    private func stopCampusRefresh() {
+        campusRefreshTask?.cancel()
+        campusRefreshTask = nil
+    }
+
+    @MainActor
+    private func refreshVisitingCampus() async {
+        guard let school = confirmedVisitingCampus, let schoolId = school.id else {
+            stopCampusRefresh()
+            return
+        }
+
+        guard isScanning else {
+            await pauseVisitingCampus(.questModeOff)
+            return
+        }
+
+        guard let location = currentLocation,
+              containsLocation(location,
+                               geohash: school.campus.centerGeohash,
+                               radius: school.campus.radiusMeters) else {
+            await pauseVisitingCampus(.leftFence)
+            return
+        }
+
+        guard let geohash = currentGeohash,
+              let confirmation = await SchoolGateManager.shared
+                .confirmCampusPresence(schoolId: schoolId, geohash: geohash) else {
+            await pauseVisitingCampus(.refreshFailed)
+            return
+        }
+
+        visitingCampusStatus = .active(schoolId: schoolId, displayName: confirmation.name)
+        setScope(.campus(schoolId: schoolId))
+        Log.location.debug("Visiting campus presence refreshed")
+    }
+
+    /// Closes the visiting pool and says so.
+    @MainActor
+    private func pauseVisitingCampus(_ reason: VisitingCampusStatus.PauseReason) async {
+        let name = confirmedVisitingCampus?.displayName
+            ?? visitingCampusStatus.schoolDisplayName
+            ?? "that campus"
+
+        confirmedVisitingCampus = nil
+        stopCampusRefresh()
+        await SchoolGateManager.shared.clearCampusPresence()
+
+        suppressCampusClaims = true
+        visitingCampusStatus = .paused(displayName: name, reason: reason)
+
+        // Back to the home campus if they are on it, otherwise paused. No
+        // leftover cross-school radar either way.
+        if let campus, let location = currentLocation,
+           containsLocation(location,
+                            geohash: campus.geofence.centerGeohash,
+                            radius: campus.geofence.radiusMeters) {
+            visitingCampusStatus = .inactive
+            suppressCampusClaims = false
+            setScope(.campus(schoolId: campus.schoolId))
+        } else {
+            setScope(.none)
+        }
+
+        Log.location.debug("Visiting campus presence paused")
     }
 
     // MARK: - Presence Refresh
