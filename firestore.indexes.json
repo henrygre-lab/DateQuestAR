@@ -1,0 +1,63 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "schoolId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "accountStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "privacySettings.questModeEnabled",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "lastActive",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "springBreakDestinationId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "accountStatus",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "privacySettings.questModeEnabled",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "lastActive",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "global_gender_stats",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "schoolId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "lastUpdated",
+          "order": "DESCENDING"
+        }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

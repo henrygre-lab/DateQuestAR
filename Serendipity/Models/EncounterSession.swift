@@ -5,6 +5,14 @@
 // [x] Server timestamps used for startTimestamp, sessionTimeout, lastUpdated
 // [x] No PII in logs — only session/match IDs logged
 // [x] revealProgress clamped to 0.0–1.0 to prevent invalid state
+// [x] Same-school gate recorded on the session (schoolId / partnerSchoolId /
+//     scope) so a cross-school session is only representable when a live Spring
+//     Break destination authorised it
+// [x] Intent overlap is locked at session start — switching Dating off mid-session
+//     cannot change this session's gender-balance posture
+// [x] isDatingGated is computed from BOTH users at start (Dating on, or inside the
+//     server-written 24h Dating-off cooldown); a Study/Hangout-only overlap never
+//     engages gender caps
 // [x] Addresses Risk #3 (Swarm / Stratification) from POTENTIAL_ISSUES.md
 // [x] Session persistence (10–15 min) handles edge cases from
 //     EDGE_CASES_AND_OBJECTIONS.md (bus/train, skyscraper vertical density)
@@ -55,6 +63,31 @@ struct EncounterSession: Identifiable, Codable {
     var sessionTimeout: Timestamp           // startTimestamp + 10–15 min
     var lastUpdated: Timestamp              // Server timestamp on every write
 
+    // MARK: - Community Context
+
+    /// School of `userAUID`. Equal to `partnerSchoolId` on every campus session.
+    var schoolId: String
+
+    /// School of `userBUID`. Differs only inside a live Spring Break window.
+    var partnerSchoolId: String
+
+    /// Which pool opened this session.
+    var scope: Match.MatchScope = .campus
+
+    /// Destination that authorised a cross-school session, nil on campus.
+    var springBreakDestinationID: String?
+
+    // MARK: - Intent Lock
+
+    /// The intent overlap captured at session start, frozen for the session's
+    /// life. Re-reading either user's current intents here would reopen the
+    /// toggle exploit, so nothing in the session path does.
+    var lockedIntents: [Intent] = []
+
+    /// Whether this session is Dating-gated, decided once at start from both
+    /// users' Dating state (active, or inside the 24h Dating-off cooldown).
+    var isDatingGated: Bool = false
+
     // MARK: - Session Duration
 
     /// Default session duration in seconds (10 minutes).
@@ -99,5 +132,33 @@ struct EncounterSession: Identifiable, Codable {
     /// Returns a clamped version of the given progress value (0.0–1.0).
     static func clampProgress(_ value: Double) -> Double {
         return min(max(value, 0.0), 1.0)
+    }
+
+    // MARK: - Intent Locking
+
+    /// The intent overlap to freeze onto a new session between two users.
+    ///
+    /// Reads `eligibleIntents`, not `activeIntents`, so a user who has Dating
+    /// switched on without the face match never contributes Dating to the lock.
+    static func lockIntents(_ a: UserProfile, _ b: UserProfile) -> [Intent] {
+        Intent.overlap(a.eligibleIntents, b.eligibleIntents)
+    }
+
+    /// Whether a session between these two users is Dating-gated.
+    ///
+    /// Requires *both* sides to be Dating-gated at start — Dating on, or inside
+    /// the server-written 24h cooldown that follows switching it off. One user
+    /// having Dating on is not enough to gender-throttle a Study overlap, and one
+    /// user switching Dating off is not enough to escape the caps.
+    static func locksDatingGate(_ a: UserProfile,
+                                _ b: UserProfile,
+                                at now: Date = Date()) -> Bool {
+        a.isDatingGated(at: now) && b.isDatingGated(at: now)
+    }
+
+    /// True when the two participants attend different schools — only reachable
+    /// through a live Spring Break window.
+    var isCrossSchool: Bool {
+        schoolId != partnerSchoolId
     }
 }

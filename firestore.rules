@@ -1,0 +1,366 @@
+rules_version = '2';
+
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
+// [x] No hardcoded secrets — all trust decisions read Firebase Auth custom claims
+// [x] Every read and write requires authentication; no anonymous access anywhere
+// [x] IDOR prevented — document IDs are never trusted; ownership is checked against
+//     request.auth.uid, and participant lists are checked against the stored document
+// [x] This file is the authoritative enforcement layer. Client-side checks in
+//     MatchManager / CommunityGate / AlertCapManager are courtesy filters only.
+// [x] schoolId, enrollmentStatus, studentIDStatus, verifiedAge, trustLevel,
+//     accountStatus, datingCooldownUntil, activeIntents and
+//     springBreakDestinationId are server-owned — every client write path
+//     rejects them. activeIntents is server-owned specifically so that switching
+//     Dating off must go through setActiveIntents, which sets the 24h cooldown.
+// [x] users/{uid}/verification/** is owner-read and function-write only; no other
+//     client can read a student ID path, school email or phone hash
+// [x] Cross-school reads require BOTH sides confirmed at the same live destination
+// [x] Waitlist and gender stats are backend-write-only
+// [x] Minimal data — user list queries fail unless every returned document is in
+//     the caller's own community, so a client cannot enumerate other campuses
+//
+// LIMITATION, stated plainly: rules cannot see device location, so they cannot
+// verify that a caller is physically inside a campus or destination geofence.
+// Rules enforce school membership, verification depth, the server-dated Spring
+// Break window and server-confirmed destination presence. Physical presence is
+// enforced by LocationService (auto-pause) and re-checked by the Cloud Function
+// that confirms destination presence before it issues the sbDest claim.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // MARK: - Identity helpers
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.admin == true;
+    }
+
+    // MARK: - Community claims
+    // Set exclusively by schoolGate.ts / studentIdVerification.ts via
+    // admin.auth().setCustomUserClaims(). Claims are signed into the ID token,
+    // so a client cannot forge or amend them.
+
+    // Every claim read goes through map.get(key, default) so that a token minted
+    // before these claims existed evaluates to the empty default rather than
+    // failing the rule evaluation outright.
+
+    function callerSchoolId() {
+      return isSignedIn() ? request.auth.token.get('schoolId', '') : '';
+    }
+
+    function callerEnrollment() {
+      return isSignedIn() ? request.auth.token.get('enrollmentStatus', 'unverified') : 'unverified';
+    }
+
+    function callerStudentIDStatus() {
+      return isSignedIn() ? request.auth.token.get('studentIDStatus', 'none') : 'none';
+    }
+
+    // Destination the caller has been server-confirmed at, or '' if none.
+    function callerDestination() {
+      return isSignedIn() ? request.auth.token.get('sbDest', '') : '';
+    }
+
+    // School gate passed: a schoolId was issued and enrollment grants access.
+    function isCommunityMember() {
+      return isSignedIn()
+        && callerSchoolId() is string
+        && callerSchoolId() != ''
+        && callerEnrollment() in ['enrolled', 'incoming'];
+    }
+
+    // Student ID card photo + liveness cleared — the Quest Mode precondition.
+    function isQuestEligible() {
+      return isCommunityMember()
+        && callerStudentIDStatus() in ['verified', 'faceMatched'];
+    }
+
+    // ID <-> liveness face match cleared — the Dating and NameDrop precondition.
+    function isFaceMatched() {
+      return isCommunityMember() && callerStudentIDStatus() == 'faceMatched';
+    }
+
+    // MARK: - Spring Break window
+    // The destination document is the only source of the window. There is no
+    // client-supplied polygon and no client-supplied date.
+
+    function destinationIsLive(destId) {
+      let path = /databases/$(database)/documents/spring_break_destinations/$(destId);
+      // Repeated get() on the same path is served from the request's cache, so
+      // this costs one document access, not four.
+      return destId is string
+        && destId != ''
+        && exists(path)
+        && get(path).data.isActive == true
+        && get(path).data.windowStart <= request.time
+        && get(path).data.windowEnd >= request.time;
+    }
+
+    // Cross-school visibility needs all four: a live window, the caller confirmed
+    // at that destination, the subject confirmed at the SAME destination, and the
+    // subject school-verified. A local or an unverified tourist satisfies none.
+    function sharesLiveDestination(subject) {
+      return callerDestination() != ''
+        && destinationIsLive(callerDestination())
+        && subject.get('springBreakDestinationId', '') == callerDestination()
+        && subject.get('schoolId', '') != ''
+        && subject.get('enrollmentStatus', 'unverified') in ['enrolled', 'incoming']
+        && subject.get('studentIDStatus', 'none') in ['verified', 'faceMatched'];
+    }
+
+    // MARK: - Users
+
+    // Fields only a Cloud Function may ever write. A client update touching any
+    // of these is rejected outright — this is the "client never self-promotes"
+    // rule, expressed once.
+    function serverOwnedUserFields() {
+      return [
+        'schoolId',
+        'schoolDisplayName',
+        'enrollmentStatus',
+        'studentIDStatus',
+        'verifiedAge',
+        'verificationStatus',
+        'verificationCompletedAt',
+        'trustLevel',
+        'trustScore',
+        'accountStatus',
+        'datingCooldownUntil',
+        'activeIntents',
+        'springBreakDestinationId',
+        'balanceBoostMultiplier',
+        'alertCapPerHour',
+        'waitlistEntryTime',
+        'activationDelayHours',
+        'uid'
+      ];
+    }
+
+    function touchesServerOwnedUserFields() {
+      return request.resource.data.diff(resource.data)
+        .affectedKeys()
+        .hasAny(serverOwnedUserFields());
+    }
+
+    // A client-created profile must arrive at the least-privileged defaults.
+    // Anything else is an attempt to self-issue a community.
+    function hasUnprivilegedDefaults() {
+      return request.resource.data.get('schoolId', null) == null
+        && request.resource.data.get('enrollmentStatus', 'unverified') == 'unverified'
+        && request.resource.data.get('studentIDStatus', 'none') == 'none'
+        && request.resource.data.get('trustLevel', 'bronze') == 'bronze'
+        && request.resource.data.get('accountStatus', 'active') == 'active'
+        && request.resource.data.get('verifiedAge', null) == null
+        && request.resource.data.get('datingCooldownUntil', null) == null
+        && request.resource.data.get('springBreakDestinationId', null) == null
+        && request.resource.data.uid == request.auth.uid;
+    }
+
+    // Intents are NOT client-writable. They are listed in serverOwnedUserFields
+    // above and change only through the setActiveIntents callable.
+    //
+    // This is the other half of the intent-toggle fix: if a client could write
+    // activeIntents directly, it could drop Dating without the server ever
+    // setting the 24h cooldown, and shed Dating's caps instantly. Routing the
+    // change through a function makes the cooldown unavoidable.
+    //
+    // On create, the profile must start on the non-Dating defaults.
+    function createIntentsAreDefault() {
+      return !request.resource.data.get('activeIntents', []).hasAny(['dating']);
+    }
+
+    match /users/{uid} {
+
+      // Read: yourself, anyone in your own community, or — during a live window —
+      // someone confirmed at the same destination. Note this rule is evaluated
+      // per document on a list query, so a query that reaches outside the
+      // caller's community fails as a whole rather than returning a filtered set.
+      // That is what forces the client to constrain its nearby query by schoolId.
+      allow get, list: if isSelf(uid)
+        || (isQuestEligible() && resource.data.get('schoolId', '') == callerSchoolId())
+        || (isQuestEligible() && sharesLiveDestination(resource.data));
+
+      allow create: if isSelf(uid)
+        && hasUnprivilegedDefaults()
+        && createIntentsAreDefault();
+
+      allow update: if isSelf(uid)
+        && !touchesServerOwnedUserFields();
+
+      // Deletion is a Cloud Function path (it must also purge verification
+      // artefacts and Storage objects), never a direct client delete.
+      allow delete: if false;
+
+      // MARK: Verification artefacts
+      // Student ID storage paths, liveness frame paths, school email, phone hash,
+      // face match score. Owner may read their own status; nobody else may read
+      // it at all, and nobody may write it from a client.
+      match /verification/{recordId} {
+        allow read: if isSelf(uid);
+        allow write: if false;
+      }
+    }
+
+    // MARK: - Schools
+
+    match /schools/{schoolId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // MARK: - Spring Break destinations
+    // Read-only to clients so LocationService can arm the region. Only an admin
+    // can open a window, and only within this document.
+
+    match /spring_break_destinations/{destinationId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // MARK: - Matches
+
+    function isMatchParticipant(data) {
+      return isSignedIn()
+        && (request.auth.uid == data.userAUID || request.auth.uid == data.userBUID);
+    }
+
+    // The same-school rule, server side. A match is legal when both participants
+    // share the caller's school, or when a live destination covers it.
+    function matchCommunityAllowed(data) {
+      return data.get('schoolId', '') == callerSchoolId()
+        && callerSchoolId() != ''
+        && (
+          data.get('partnerSchoolId', '') == callerSchoolId()
+          || (
+            data.get('scope', 'campus') == 'springBreak'
+            && callerDestination() != ''
+            && data.get('springBreakDestinationID', '') == callerDestination()
+            && destinationIsLive(callerDestination())
+          )
+        );
+    }
+
+    // A Dating-gated match requires the face match on the writing side. The
+    // partner's face match is checked by the alert-issuing Cloud Function, which
+    // can read both profiles; rules can only vouch for the caller.
+    function datingGateSatisfied(data) {
+      return data.get('isDatingGated', false) != true || isFaceMatched();
+    }
+
+    // Fields the client must not rewrite after creation: doing so would let a
+    // participant relabel a Dating encounter as Study to escape caps, or move a
+    // cross-school match onto a campus scope after the window shut.
+    function lockedMatchFields() {
+      return ['userAUID', 'userBUID', 'schoolId', 'partnerSchoolId', 'scope',
+              'springBreakDestinationID', 'lockedIntents', 'isDatingGated', 'createdAt'];
+    }
+
+    match /matches/{matchId} {
+      allow get, list: if isMatchParticipant(resource.data);
+
+      allow create: if isQuestEligible()
+        && isMatchParticipant(request.resource.data)
+        && matchCommunityAllowed(request.resource.data)
+        && datingGateSatisfied(request.resource.data);
+
+      allow update: if isQuestEligible()
+        && isMatchParticipant(resource.data)
+        && !request.resource.data.diff(resource.data)
+             .affectedKeys().hasAny(lockedMatchFields());
+
+      allow delete: if false;
+    }
+
+    // MARK: - Encounter sessions
+    // Same gate as matches. The intent lock is immutable for the session's life:
+    // that immutability is the server half of the intent-toggle fix.
+
+    function isSessionParticipant(data) {
+      return isSignedIn()
+        && (request.auth.uid == data.userAUID || request.auth.uid == data.userBUID);
+    }
+
+    function lockedSessionFields() {
+      return ['matchID', 'userAUID', 'userBUID', 'schoolId', 'partnerSchoolId',
+              'scope', 'springBreakDestinationID', 'lockedIntents', 'isDatingGated',
+              'startTimestamp'];
+    }
+
+    match /encounter_sessions/{sessionId} {
+      allow get, list: if isSessionParticipant(resource.data);
+
+      allow create: if isQuestEligible()
+        && isSessionParticipant(request.resource.data)
+        && matchCommunityAllowed(request.resource.data)
+        && datingGateSatisfied(request.resource.data)
+        && request.resource.data.revealProgress >= 0.0
+        && request.resource.data.revealProgress <= 1.0
+        // A session may only ever open at .blurred. Fail-closed reveal.
+        && request.resource.data.revealStage == 'blurred';
+
+      allow update: if isQuestEligible()
+        && isSessionParticipant(resource.data)
+        && !request.resource.data.diff(resource.data)
+             .affectedKeys().hasAny(lockedSessionFields())
+        && request.resource.data.revealProgress >= 0.0
+        && request.resource.data.revealProgress <= 1.0
+        // .connected is the NameDrop stage — it needs the face match, and it is
+        // only reachable from .revealed.
+        && (
+          request.resource.data.revealStage != 'connected'
+          || (isFaceMatched() && resource.data.revealStage in ['revealed', 'connected'])
+        );
+
+      allow delete: if false;
+    }
+
+    // MARK: - Reports
+    // Write-only from the client. A reporter must not be able to read the report
+    // corpus, which would expose who else has been reported.
+
+    match /reports/{reportId} {
+      allow read: if false;
+      allow create: if isSignedIn()
+        && request.resource.data.reporterUID == request.auth.uid
+        && request.resource.data.reportedUID is string
+        && request.resource.data.reportedUID != request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // MARK: - Backend-write-only collections
+
+    // Referral codes are generated server-side. The owner may read their own
+    // code and count; nothing about anyone else's referrals is readable, and no
+    // client may write — a client-writable counter is a free XP faucet.
+    match /referrals/{uid} {
+      allow read: if isSelf(uid);
+      allow write: if false;
+    }
+
+    match /waitlist/{uid} {
+      allow read: if isSelf(uid);
+      allow write: if false;
+    }
+
+    match /global_gender_stats/{document=**} {
+      allow read: if isCommunityMember();
+      allow write: if false;
+    }
+
+    // MARK: - Default deny
+    // Anything not named above is closed. New collections must opt in here
+    // deliberately rather than inheriting access.
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

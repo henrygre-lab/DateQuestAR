@@ -1,10 +1,17 @@
 // MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets, API keys, or tokens
 // [x] All Firestore writes require Firebase Auth UID ownership check
-// [x] Gender + accountStatus fields are server-validated; client only reads
-// [x] alertCapPerHour enforced server-side via Firestore rules, not client trust
-// [x] Asymmetric daily alert caps (currentDailyLimit) are advisory client-side;
-//     Firestore Security Rules are the real enforcement boundary
+// [x] schoolId, enrollmentStatus, studentIDStatus, verifiedAge, trustLevel,
+//     accountStatus and datingCooldownUntil are server-authoritative — issued by
+//     schoolGate.ts / studentIdVerification.ts and rejected on client write by
+//     firestore.rules. The client reads them and never self-promotes.
+// [x] No student ID image, liveness frame, phone number or school email on this
+//     type — those live on users/{uid}/verification/** (owner-only) and are
+//     therefore absent from every nearby and match payload built from a profile
+// [x] Asymmetric daily alert caps apply ONLY to Dating-gated encounters; the cap
+//     value here is advisory and Firestore Security Rules are the real boundary
+// [x] Dating-off cannot shed caps — datingCooldownUntil is server-written and
+//     isDatingGated() honours it for 24h after Dating is switched off
 // [x] No raw coordinates stored — location uses geohash only
 // [x] waitlistEntryTime uses Firestore Timestamp (server clock, not client)
 // [x] Minimal PII exposure — intentVibes are user-supplied tags, not free text
@@ -35,6 +42,39 @@ struct UserProfile: Identifiable, Codable {
     var createdAt: Date
     var lastActive: Date
 
+    // MARK: - Campus Community (server-authoritative)
+
+    /// Issued by `schoolGate.ts` after phone + allowlisted .edu magic link,
+    /// school OAuth, or approved enrollment proof. Nil until the gate passes.
+    /// `firestore.rules` rejects any client write to this field.
+    var schoolId: String?
+
+    /// Denormalised community identity for the nearby card badge, e.g. "UCLA".
+    /// Written alongside `schoolId` by the same Cloud Function so a nearby card
+    /// can render the badge without a second read. Community identity only —
+    /// never a neighbourhood, venue or building (DESIGN_SYSTEM.md §8).
+    var schoolDisplayName: String?
+
+    /// Server-authoritative. Only `.enrolled` and `.incoming` enter a community.
+    var enrollmentStatus: EnrollmentStatus = .unverified
+
+    /// Server-authoritative result of the student ID card photo + liveness check.
+    /// The images themselves never reach this document.
+    var studentIDStatus: StudentIDStatus = .none
+
+    // MARK: - Intents
+
+    /// What this user is on the app for. Dating is optional and off by default —
+    /// new profiles start on Hangout + Study.
+    var activeIntents: [Intent] = Intent.defaults
+
+    /// Set by the server for 24h when a user switches Dating off. While it is in
+    /// the future, Dating-gated protections still apply to this uid.
+    ///
+    /// This is the intent-toggle exploit fix: dropping Dating removes the user
+    /// from the Dating pool but does not remove them from Dating's caps.
+    var datingCooldownUntil: Timestamp?
+
     // MARK: - Gender Balance & Safety Fields (Phase 1)
 
     var gender: Gender = .preferNotToSay
@@ -49,16 +89,20 @@ struct UserProfile: Identifiable, Codable {
 
     // MARK: - Asymmetric Daily Alert Caps (Mitigation #1)
     // Lower caps for women protect against notification overload from
-    // male-skewed user bases. Limits are enforced server-side via
-    // Firestore Security Rules; client values are advisory only.
+    // male-skewed user bases. These apply to Dating-gated encounters only —
+    // a Study or Hangout overlap is never gender-throttled. Limits are enforced
+    // server-side via Firestore Security Rules; client values are advisory only.
 
     var alertsSentToday: Int = 0
     var lastAlertResetDate: Date = Date()
 
-    /// Gender-based daily alert cap.
+    /// Gender-based daily alert cap for **Dating-gated** encounters.
     /// Women receive fewer inbound alerts to prevent overload in
     /// male-heavy populations. Non-binary and prefer-not-to-say
     /// sit between the two extremes.
+    ///
+    /// Callers must not apply this to a session whose locked intent overlap
+    /// excludes Dating — see `AlertCapManager.canSendAlert(for:to:lockedIntents:)`.
     var currentDailyLimit: Int {
         switch gender {
         case .female:         return 10
@@ -108,9 +152,9 @@ struct UserProfile: Identifiable, Codable {
     // MARK: - Trust Level
 
     enum TrustLevel: String, Codable, Comparable {
-        case bronze     // Email verified (Firebase Auth complete)
-        case silver     // Live selfie liveness check passed
-        case gold       // Selfie + ID face match confirmed
+        case bronze     // School gate passed (phone + .edu / OAuth / enrollment proof)
+        case silver     // Student ID card photo + liveness check passed
+        case gold       // Student ID ↔ liveness face match confirmed
         case platinum   // Gold + avg post-meet rating ≥ 4.0 (≥3 ratings)
 
         private var sortOrder: Int {
@@ -128,23 +172,92 @@ struct UserProfile: Identifiable, Codable {
     }
 }
 
+// MARK: - Access Gates
+
+/// The three preconditions the whole product hangs off. Each reads only
+/// server-authoritative fields, so a client cannot widen its own access by
+/// editing local state — and `firestore.rules` re-checks the same predicates.
+extension UserProfile {
+
+    /// Verified adult per the student ID. `age` is self-reported and is never
+    /// used here; `verifiedAge` is written by `studentIdVerification.ts`.
+    var isVerifiedAdult: Bool {
+        (verifiedAge ?? 0) >= 18
+    }
+
+    /// **Gate 1 — school gate.** May this account see a campus community at all?
+    ///
+    /// Requires a server-issued `schoolId`, an enrollment status that grants
+    /// access (`.enrolled` or `.incoming`), and an account in good standing.
+    var canEnterCampusCommunity: Bool {
+        guard let schoolId, !schoolId.isEmpty else { return false }
+        guard enrollmentStatus.grantsCommunityAccess else { return false }
+        guard accountStatus == .active else { return false }
+        return true
+    }
+
+    /// **Gate 2 — Quest Mode.** Student ID card photo + liveness on top of the
+    /// school gate. This is deliberately stricter than Fizz: an .edu address
+    /// alone gets you into the community, not into proximity scanning.
+    var canStartQuestMode: Bool {
+        canEnterCampusCommunity && studentIDStatus.isIDVerified
+    }
+
+    /// **Gate 3 — Dating.** Student ID ↔ liveness face match, plus verified
+    /// adulthood. `.incoming` students may be 17, and admission proof says
+    /// nothing about age, so the face-match age is the one that counts.
+    var canUseDatingIntent: Bool {
+        canStartQuestMode && studentIDStatus.isFaceMatched && isVerifiedAdult
+    }
+
+    /// NameDrop exchanges real identity, so it carries the Dating-tier proof
+    /// even when the encounter's intent is Study or Hangout.
+    var canNameDrop: Bool {
+        canStartQuestMode && studentIDStatus.isFaceMatched
+    }
+
+    // MARK: - Dating State
+
+    /// Dating is currently switched on for this user.
+    var isDatingActive: Bool {
+        activeIntents.contains(.dating) && canUseDatingIntent
+    }
+
+    /// Inside the server-written 24h cooldown that follows switching Dating off.
+    func isInDatingCooldown(at now: Date = Date()) -> Bool {
+        guard let until = datingCooldownUntil?.dateValue() else { return false }
+        return now < until
+    }
+
+    /// Dating protections apply to this user right now — either Dating is on, or
+    /// they are inside the cooldown that follows switching it off.
+    ///
+    /// Used when locking an `EncounterSession`'s intents: an alert counts as
+    /// Dating only if *both* users are Dating-gated at session start.
+    func isDatingGated(at now: Date = Date()) -> Bool {
+        isDatingActive || isInDatingCooldown(at: now)
+    }
+
+    /// The intents this user can actually offer right now, with Dating filtered
+    /// out unless the face-match and adult gates are satisfied. Never trust
+    /// `activeIntents` directly for matching.
+    var eligibleIntents: [Intent] {
+        activeIntents.filter { intent in
+            guard intent.requiresFaceMatch || intent.requiresVerifiedAdult else { return true }
+            return canUseDatingIntent
+        }
+    }
+}
+
 // MARK: - Match Preferences
 
 struct MatchPreferences: Codable {
     var ageRange: ClosedRange<Int>          // e.g. 22...30
     var maxDistanceMiles: Double            // Quest range; capped at 0.25
-    var relationshipTypes: [RelationshipType]
     var genderPreferences: [String]
     var interests: [String]                 // e.g. ["hiking", "coffee", "travel"]
     var dealbreakers: [String]
     var compatibilityThreshold: Double      // 0.0–1.0; default 0.80
-
-    enum RelationshipType: String, Codable, CaseIterable {
-        case shortTerm = "Short-Term"
-        case longTerm  = "Long-Term"
-        case casual    = "Casual"
-        case friendship = "Friendship"
-    }
 }
 
 // MARK: - Privacy Settings
@@ -173,4 +286,3 @@ struct GeoFenceZone: Identifiable, Codable {
     var radiusMeters: Double                // Pause radius
     var isActive: Bool
 }
-
