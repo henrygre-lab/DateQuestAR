@@ -38,6 +38,11 @@ export {
 // MARK: - Intents (server-owned; Dating-off starts the 24h cooldown)
 export { setActiveIntents } from "./intents";
 
+// MARK: - Gamification (self-only XP and badge grants)
+// Cross-user rewards (referral, waitlist survivor) have no callable entry point —
+// they are issued by activateWaitlistedUsers.
+export { awardXP, awardBadge } from "./gamification";
+
 // MARK: - Identity Verification (Persona/Onfido Proxy)
 export {
   createVerificationSession,

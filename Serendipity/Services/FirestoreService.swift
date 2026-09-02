@@ -2,7 +2,9 @@
 // [x] No hardcoded secrets, API keys, or tokens
 // [x] All writes use authenticated UID — no anonymous writes
 // [x] Transactions used for alert counter increments (atomicity)
-// [x] Transactions used for all XP grants — no client-side XP manipulation
+// [x] No client XP write path — grantXP and updateGamificationProfile were
+//     removed; the awardXP Cloud Function is the only grant path, and it cannot
+//     be asked to credit another account
 // [x] Daily login XP uses server timestamp comparison — no client clock trust
 // [x] Streak bonuses are deterministic and server-verifiable
 // [x] XP reason logged for debugging only — no PII in reason strings
@@ -513,6 +515,16 @@ final class FirestoreService {
     ///
     /// - Security: lastLoginDate compared using server timestamp to prevent
     ///   client clock manipulation. XP amount is fixed (not caller-controlled).
+    /// Records a daily login and its streak bonus.
+    ///
+    /// This is the one remaining client-side XP write, and it is a **self**
+    /// write: `XPManager` only ever passes the signed-in uid, and
+    /// `firestore.rules` allows a user to write their own `gamification.*`.
+    ///
+    /// TODO: move to a Cloud Function alongside `awardXP`. It is left here for
+    /// now because the streak comparison is the interesting part and porting it
+    /// is a behaviour change, not a mechanical move — but it does mean the
+    /// 1…10000 clamp that guards every other grant does not guard this one.
     func recordDailyLogin(uid: String) async throws -> (xpGained: Int, newStreak: Int) {
         let docRef = usersCollection.document(uid)
 
@@ -574,77 +586,18 @@ final class FirestoreService {
         return (xpGained: dict["xpGained"] ?? 0, newStreak: dict["newStreak"] ?? 0)
     }
 
-    /// Atomically grants XP to a user and recalculates their level.
-    /// Uses a transaction to prevent race conditions from concurrent XP sources
-    /// (e.g., icebreaker completion + badge award firing simultaneously).
-    ///
-    /// - Parameters:
-    ///   - uid: The user's Firestore document ID.
-    ///   - amount: XP to add. Must be positive; clamped to 1...10000.
-    ///   - reason: Internal debug label (e.g., "icebreaker_completed"). No PII.
-    /// - Returns: The user's new total XP after the grant.
-    ///
-    /// - Security: the clamp below runs **on the client and is advisory only** —
-    ///   this is a client-side Firestore transaction, so anyone with the app's
-    ///   credentials can write `gamification.totalXP` directly and never reach
-    ///   this function. §03 requires XP grants to be validated server-side; that
-    ///   means a Cloud Function or a Firestore rule bounding the delta, and
-    ///   neither exists yet. Treated the same way `AlertCapManager` treats its
-    ///   caps: enforced here as a courtesy, authoritative nowhere.
-    ///   Reason is never user-supplied free text — callers pass fixed string
-    ///   constants only.
-    func grantXP(uid: String, amount: Int, reason: String) async throws -> Int {
-        // Clamp to prevent abuse if a caller passes an unreasonable value
-        let safeAmount = min(max(amount, 1), 10000)
-        let docRef = usersCollection.document(uid)
-
-        let result = try await db.runTransaction { transaction, errorPointer -> Any? in
-            let snapshot: DocumentSnapshot
-            do {
-                snapshot = try transaction.getDocument(docRef)
-            } catch let error as NSError {
-                errorPointer?.pointee = error
-                return nil
-            }
-
-            let gamData = snapshot.data()?["gamification"] as? [String: Any] ?? [:]
-            let currentXP = gamData["totalXP"] as? Int ?? 0
-            let newTotalXP = currentXP + safeAmount
-            let newLevel = 1 + Int(sqrt(Double(newTotalXP) / 80.0))
-
-            // Narrow write — only XP and level fields
-            transaction.updateData([
-                "gamification.totalXP": newTotalXP,
-                "gamification.level": newLevel,
-                "lastActive": FieldValue.serverTimestamp()
-            ], forDocument: docRef)
-
-            return newTotalXP
-        }
-
-        let newTotal = (result as? Int) ?? 0
-        Log.firestore.debug("Granted \(safeAmount) XP to \(uid.prefix(8))... reason=\(reason) total=\(newTotal)")
-        return newTotal
-    }
-
-    /// Updates the gamification sub-document with a full GamificationProfile.
-    /// Uses narrow updateData to avoid overwriting non-gamification fields.
-    /// Recaches level before writing to keep stored level consistent.
-    ///
-    /// - Security: Only touches gamification.* fields. Server-authoritative
-    ///   fields (accountStatus, trustLevel, etc.) are never written.
-    func updateGamificationProfile(uid: String, profile: GamificationProfile) async throws {
-        var mutable = profile
-        mutable.recacheLevel()
-
-        try await usersCollection.document(uid).updateData([
-            "gamification.totalXP": mutable.totalXP,
-            "gamification.level": mutable.level,
-            "gamification.lastLoginDate": Timestamp(date: mutable.lastLoginDate),
-            "gamification.currentStreakDays": mutable.currentStreakDays,
-            "lastActive": FieldValue.serverTimestamp()
-        ])
-    }
+    // MARK: - XP
+    //
+    // There is deliberately no client XP write path any more. `grantXP` and
+    // `updateGamificationProfile` both took a uid, which meant a caller could
+    // credit another account — `firestore.rules` denies that, and the methods
+    // are removed rather than left to fail at runtime.
+    //
+    // XP is granted by the `awardXP` Cloud Function, which writes
+    // `request.auth.uid` and picks the amount from a server-side table. See
+    // `functions/src/gamification.ts`.
+    //
+    // The one exception below it is `recordDailyLogin`, which is a self-write.
 
     // MARK: - Waitlist (Read-Only on Client)
 

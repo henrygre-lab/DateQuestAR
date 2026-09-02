@@ -1,15 +1,25 @@
 // MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets, API keys, or tokens
-// [x] XP/badge writes go through FirestoreService (server-validated via security rules)
-// [x] Remote Config values validated and clamped before use
-// [x] No PII logged — only badge names, XP amounts, and multiplier values
-// [x] Multiplier bounds enforced client-side (1.0–2.0) to prevent exploitation
+// [x] XP and badge grants go through the awardXP / awardBadge Cloud Functions.
+//     This file performs NO Firestore writes — the `db` handle is gone, so a
+//     cross-user write is not expressible here, not merely denied at runtime.
+// [x] No method here takes a recipient uid. The function always writes
+//     request.auth.uid, so the client cannot name someone else.
+// [x] The client sends a reason, not an amount. Amounts live in a server-side
+//     table; the multiplier is derived server-side from the user's own profile
+//     and their campus ratio, never sent from here.
+// [x] Amount clamping (1…10000) and the multiplier bounds (1.0–2.0) are enforced
+//     in gamification.ts. The client-side Remote Config values that remain are
+//     used only for display copy, not to decide a grant.
+// [x] Referral and waitlist-survivor rewards have no client path at all — they
+//     are issued by activateWaitlistedUsers on a server-observed event
+// [x] No PII logged — only badge names and reason strings
 // [x] Badge definitions are read-only constants — no user-controlled badge creation
 
 import Foundation
 import Combine
 import FirebaseRemoteConfig
-import FirebaseFirestore
+import FirebaseFunctions
 
 // MARK: - GamificationService
 
@@ -21,7 +31,7 @@ final class GamificationService: ObservableObject {
     @Published var recentBadge: BadgeDefinition?
 
     private let remoteConfig = RemoteConfig.remoteConfig()
-    private let db = Firestore.firestore()
+    private let functions = Functions.functions()
     private let analytics = AnalyticsService.shared
 
     // MARK: - Remote Config Keys
@@ -72,27 +82,18 @@ final class GamificationService: ObservableObject {
         let iconName: String
         let description: String
 
-        /// Converts to a Firestore-compatible dictionary for storage.
-        func toFirestoreData() -> [String: Any] {
-            [
-                "id": id,
-                "name": name,
-                "iconName": iconName,
-                "earnedAt": Timestamp(date: Date()),
-                "description": description
-            ]
-        }
+        // No `toFirestoreData()` any more. The badge document is written by
+        // `gamification.ts` inside the same transaction that dedupes it; a
+        // client-side serializer for a write path that no longer exists is a
+        // trap for whoever finds it next. `id` is the only field that crosses
+        // the wire — the server owns the rest.
     }
 
     // MARK: - XP Constants
 
-    private enum XPReward {
-        static let verification = 200
-        static let firstConnection = 150
-        static let waitlistSurvivor = 100
-        static let referral = 100
-        static let icebreakerCompleted = 50
-    }
+    // XP amounts intentionally live in `gamification.ts` and nowhere else. A
+    // client-side copy of the table is a copy that drifts, and the value it
+    // holds is not the one that gets written.
 
     // MARK: - Init
 
@@ -140,109 +141,112 @@ final class GamificationService: ObservableObject {
 
     // MARK: - XP Awarding
 
-    /// Awards XP to a user, applying the active multiplier for underrepresented genders.
-    /// Writes via Firestore transaction for atomicity.
-    func awardXP(uid: String, baseAmount: Int, reason: String, applyGenderMultiplier: Bool = false, gender: Gender? = nil) async {
-        var multiplier = 1.0
-        if applyGenderMultiplier, let gender = gender {
-            let needsBoost = BalanceEnforcer.shared.needsFemaleBoost
-            if (gender == .female || gender == .nonBinary) && needsBoost {
-                multiplier = underrepresentedGenderMultiplier()
-            }
-        }
-
-        let finalAmount = Int(Double(baseAmount) * multiplier)
-        guard finalAmount > 0, finalAmount <= 99999 else { return }
-
+    /// Grants XP to **the signed-in user**, via the `awardXP` Cloud Function.
+    ///
+    /// There is deliberately no `uid` parameter. The previous version took one
+    /// and wrote `users/{uid}` directly, which meant any client could credit any
+    /// account; `firestore.rules` now denies that, and removing the parameter
+    /// means the mistake cannot be made again at a call site.
+    ///
+    /// There is deliberately no `amount` parameter either. The reason selects
+    /// the amount from a server-side table, so a caller cannot pass the wrong
+    /// number and an attacker cannot pass a large one.
+    ///
+    /// - Parameter reason: one of the reasons `gamification.ts` accepts from a
+    ///   client. An unknown reason is rejected server-side.
+    @discardableResult
+    func awardXP(reason: XPReason) async -> Int? {
         do {
-            let docRef = db.collection("users").document(uid)
-            _ = try await db.runTransaction { transaction, errorPointer -> Any? in
-                let snapshot: DocumentSnapshot
-                do {
-                    snapshot = try transaction.getDocument(docRef)
-                } catch let error as NSError {
-                    errorPointer?.pointee = error
-                    return nil
-                }
+            let result = try await functions
+                .httpsCallable("awardXP")
+                .call(["reason": reason.rawValue])
 
-                let gamData = snapshot.data()?["gamification"] as? [String: Any] ?? [:]
-                let currentXP = gamData["totalXP"] as? Int ?? 0
-                let newXP = currentXP + finalAmount
-                let newLevel = 1 + Int(sqrt(Double(newXP) / 80.0))
+            let payload = result.data as? [String: Any]
+            let awarded = payload?["awarded"] as? Int ?? 0
 
-                transaction.updateData([
-                    "gamification.totalXP": newXP,
-                    "gamification.level": newLevel
-                ], forDocument: docRef)
-
-                return nil
-            }
-
-            analytics.logXPAwarded(amount: finalAmount, multiplier: multiplier, reason: reason)
+            // The multiplier is applied server-side; log 1.0 rather than
+            // guessing at what the server used.
+            analytics.logXPAwarded(amount: awarded, multiplier: 1.0, reason: reason.rawValue)
+            return payload?["totalXP"] as? Int
         } catch {
-            Log.gamification.error("XP award failed: \(error.localizedDescription)")
+            Log.gamification.error("XP award failed (\(reason.rawValue)): \(error.localizedDescription)")
+            return nil
         }
+    }
+
+    /// Reasons a client may request for itself. Mirrors the allowlist in
+    /// `gamification.ts`; anything not here is refused server-side.
+    ///
+    /// `waitlist_survived` and `referral_reward` are absent on purpose — those
+    /// are server-issued and have no client entry point.
+    enum XPReason: String {
+        case verification
+        case firstConnection = "first_connection"
+        case icebreakerCompleted = "icebreaker_completed"
+        case nameDropCompleted = "namedrop_completed"
     }
 
     // MARK: - Badge Awarding
 
-    /// Awards a badge to a user. Badges are stored as a top-level array on the
-    /// user document (not inside GamificationProfile) for independent querying.
-    /// Deduplication by badge ID prevents duplicate awards.
-    func awardBadge(uid: String, badge: BadgeDefinition, trigger: String) async {
+    /// Awards a badge to **the signed-in user**, via the `awardBadge` Cloud
+    /// Function. Deduplication by badge id happens server-side, inside the same
+    /// transaction as the write.
+    ///
+    /// As with `awardXP`, no recipient parameter exists.
+    func awardBadge(_ badge: BadgeDefinition, trigger: String) async {
         do {
-            let docRef = db.collection("users").document(uid)
-            let doc = try await docRef.getDocument()
-            let existingBadges = doc.data()?["badges"] as? [[String: Any]] ?? []
+            let result = try await functions
+                .httpsCallable("awardBadge")
+                .call(["badgeId": badge.id])
 
-            // Don't award duplicate badges
-            if existingBadges.contains(where: { ($0["id"] as? String) == badge.id }) {
-                return
+            let awarded = (result.data as? [String: Any])?["awarded"] as? Bool ?? false
+            if awarded {
+                recentBadge = badge
+                analytics.logBadgeAwarded(badgeName: badge.name, trigger: trigger)
             }
-
-            try await docRef.updateData([
-                "badges": FieldValue.arrayUnion([badge.toFirestoreData()])
-            ])
-
-            recentBadge = badge
-            analytics.logBadgeAwarded(badgeName: badge.name, trigger: trigger)
         } catch {
             Log.gamification.error("Badge award failed: \(error.localizedDescription)")
         }
     }
 
     // MARK: - Reward Actions
+    //
+    // All self-service. Each one grants to the signed-in user; none can name a
+    // recipient, because the underlying calls no longer accept one.
 
     /// Call after verification completes successfully.
-    func rewardVerification(uid: String, gender: Gender) async {
-        await awardXP(uid: uid, baseAmount: XPReward.verification, reason: "verification", applyGenderMultiplier: true, gender: gender)
-        await awardBadge(uid: uid, badge: BadgeType.verifiedPioneer, trigger: "verification_completed")
+    func rewardVerification() async {
+        await awardXP(reason: .verification)
+        await awardBadge(BadgeType.verifiedPioneer, trigger: "verification_completed")
     }
 
     /// Call after first real-world connection.
-    func rewardFirstConnection(uid: String, gender: Gender) async {
-        await awardXP(uid: uid, baseAmount: XPReward.firstConnection, reason: "first_connection", applyGenderMultiplier: true, gender: gender)
-        await awardBadge(uid: uid, badge: BadgeType.firstConnection, trigger: "first_connection")
-    }
-
-    /// Call when a waitlisted user is activated.
-    func rewardWaitlistSurvivor(uid: String, gender: Gender) async {
-        await awardXP(uid: uid, baseAmount: XPReward.waitlistSurvivor, reason: "waitlist_survived", applyGenderMultiplier: true, gender: gender)
-        await awardBadge(uid: uid, badge: BadgeType.waitlistSurvivor, trigger: "waitlist_activation")
-    }
-
-    /// Call when user joins during a gender imbalance on the underrepresented side.
-    func rewardBalanceGuardian(uid: String) async {
-        await awardBadge(uid: uid, badge: BadgeType.balanceGuardian, trigger: "gender_balance_contribution")
+    func rewardFirstConnection() async {
+        await awardXP(reason: .firstConnection)
+        await awardBadge(BadgeType.firstConnection, trigger: "first_connection")
     }
 
     /// Call after completing an icebreaker challenge.
-    func rewardIcebreakerCompleted(uid: String, gender: Gender) async {
-        await awardXP(uid: uid, baseAmount: XPReward.icebreakerCompleted, reason: "icebreaker_completed", applyGenderMultiplier: false)
+    func rewardIcebreakerCompleted() async {
+        await awardXP(reason: .icebreakerCompleted)
     }
 
     /// Call after 5 successful vibe-matched connections.
-    func rewardVibeMatchmaker(uid: String) async {
-        await awardBadge(uid: uid, badge: BadgeType.vibeMatchmaker, trigger: "five_vibe_matches")
+    func rewardVibeMatchmaker() async {
+        await awardBadge(BadgeType.vibeMatchmaker, trigger: "five_vibe_matches")
     }
+
+    // MARK: - Server-Issued Rewards
+    //
+    // `waitlist_survivor` and `balance_guardian` badges, and the waitlist and
+    // referral XP, are issued by `activateWaitlistedUsers` in the backend. There
+    // are deliberately no client methods for them:
+    //
+    // - Waitlist activation is a scheduled server event. The client is not
+    //   present when it happens and has nothing to contribute to the decision.
+    // - A referral reward credits *someone else's* account. Any client path to
+    //   that is a free XP faucet, however it is dressed up — a callable that
+    //   takes a referrer uid is no safer than the direct write it replaced.
+    //
+    // The client learns about both by re-reading its own profile.
 }

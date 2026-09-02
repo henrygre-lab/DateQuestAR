@@ -1,9 +1,15 @@
 // MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets, API keys, or tokens
-// [x] All XP writes go through FirestoreService transactions — no client-side manipulation
-// [x] XP amounts are fixed constants, not caller-controlled or user-editable
+// [x] Icebreaker and NameDrop XP go through the awardXP Cloud Function, which
+//     writes request.auth.uid and takes no recipient — a grant to another user
+//     is not expressible from here
+// [x] The client sends a reason, not an amount. The amount and the 1…10000 clamp
+//     live in gamification.ts, so the clamp is enforced rather than advisory.
+// [x] Daily-login streak XP remains a self-write Firestore transaction
+//     (recordDailyLogin) — allowed by firestore.rules, since it only ever writes
+//     the caller's own document. See the TODO on that method.
 // [x] Level derived from totalXP via deterministic formula — cached value is advisory
-// [x] No PII in logs — only truncated UIDs and XP amounts
+// [x] No PII in logs — only XP amounts and reasons, never a uid
 // [x] Local gamification state is a read cache; Firestore is authoritative
 // [x] Addresses gamification momentum from POTENTIAL_ISSUES.md Risk #5 (dead zones)
 //     and Risk #3 (swarm) by rewarding icebreaker/NameDrop completion over passive use
@@ -29,14 +35,11 @@ final class XPManager: ObservableObject {
     @Published var currentGamification: GamificationProfile?
 
     // MARK: - XP Award Constants
-    // Fixed amounts — never user-supplied. Changing these changes game balance,
-    // so treat as a product decision, not a config value.
-
-    /// XP awarded for completing an AR icebreaker challenge.
-    private let icebreakerXP = 50
-
-    /// XP awarded for a successful NameDrop (mutual profile exchange).
-    private let nameDropXP = 100
+    //
+    // The icebreaker and NameDrop amounts used to live here. They now live in
+    // `gamification.ts`, because that is the only place that can actually award
+    // them — a second copy on the client would drift, and the number it held
+    // would not be the number written.
 
     // MARK: - Dependencies
 
@@ -98,7 +101,7 @@ final class XPManager: ObservableObject {
     /// Awards XP for completing an AR icebreaker challenge.
     /// Call from MatchManager/RevealManager after icebreaker success.
     func grantIcebreakerXP() async {
-        await grantXP(amount: icebreakerXP, reason: "icebreaker_completed")
+        await grantXP(reason: .icebreakerCompleted)
     }
 
     // MARK: - NameDrop XP
@@ -106,7 +109,7 @@ final class XPManager: ObservableObject {
     /// Awards XP for a successful NameDrop (mutual profile exchange).
     /// Call from RevealManager.completeReveal after both users consent.
     func grantNameDropXP() async {
-        await grantXP(amount: nameDropXP, reason: "namedrop_completed")
+        await grantXP(reason: .nameDropCompleted)
     }
 
     // MARK: - Level Query
@@ -181,25 +184,19 @@ final class XPManager: ObservableObject {
 
     // MARK: - Private
 
-    /// Internal helper for all XP grants. Routes through FirestoreService.grantXP
-    /// transaction and updates the local cache on success.
-    private func grantXP(amount: Int, reason: String) async {
-        guard let uid = Auth.auth().currentUser?.uid else { return }
-
-        do {
-            let newTotal = try await firestoreService.grantXP(
-                uid: uid,
-                amount: amount,
-                reason: reason
-            )
-
-            // Update local cache
-            currentGamification?.totalXP = newTotal
-            currentGamification?.recacheLevel()
-
-            analytics.logXPAwarded(amount: amount, multiplier: 1.0, reason: reason)
-        } catch {
-            Log.xp.error("XP grant failed (\(reason)): \(error.localizedDescription)")
+    /// Internal helper for all XP grants.
+    ///
+    /// Routes through `GamificationService.awardXP`, which calls the Cloud
+    /// Function. Note there is no amount and no uid: the reason selects the
+    /// amount server-side, and the function writes `request.auth.uid`. Neither
+    /// this method nor its callers can name a recipient or a number.
+    private func grantXP(reason: GamificationService.XPReason) async {
+        guard let newTotal = await GamificationService.shared.awardXP(reason: reason) else {
+            return
         }
+
+        // Local cache only — Firestore remains authoritative.
+        currentGamification?.totalXP = newTotal
+        currentGamification?.recacheLevel()
     }
 }

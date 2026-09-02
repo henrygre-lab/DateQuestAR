@@ -11,9 +11,13 @@
 // [x] activeIntents defaults to Hangout + Study; Dating is never a default
 // [x] Server timestamps used for all time fields — never trust client clock
 // [x] Minimal data written — only balance/safety defaults, no echoed PII
+// [x] Waitlist activation issues the survivor and referral rewards server-side.
+//     No client can request them, because activation is a server-observed event
+//     and a client-requestable referral reward is a free XP faucet.
 
 import * as admin from "firebase-admin";
 import { beforeUserCreated } from "firebase-functions/v2/identity";
+import { grantWaitlistActivationRewards } from "./gamification";
 
 const db = admin.firestore();
 
@@ -169,7 +173,7 @@ export const activateWaitlistedUsers = onSchedule(
       .get();
 
     const batch = db.batch();
-    let activated = 0;
+    const activatedUIDs: string[] = [];
 
     for (const doc of queued.docs) {
       const uid = doc.data().uid as string;
@@ -187,13 +191,32 @@ export const activateWaitlistedUsers = onSchedule(
         activationDelayHours: null,
       });
 
-      activated++;
+      activatedUIDs.push(uid);
     }
 
-    if (activated > 0) {
+    if (activatedUIDs.length > 0) {
       await batch.commit();
+
+      // Survivor XP + badge, and the referrer's reward if there was one.
+      //
+      // This is where the referral reward belongs: activation is a server
+      // event, so the server issues the reward. The client used to do this by
+      // writing the referrer's document directly, which firestore.rules now
+      // correctly denies — and rightly, since a client that can credit another
+      // account is a free XP faucet whatever the intent.
+      //
+      // Rewards are granted per user rather than batched: one failure should
+      // not roll back an activation that already committed.
+      for (const uid of activatedUIDs) {
+        try {
+          await grantWaitlistActivationRewards(uid);
+        } catch (error) {
+          console.error(`[activateWaitlistedUsers] reward failed for ${uid}`);
+        }
+      }
+
       console.log(
-        `[activateWaitlistedUsers] Activated ${activated} users from waitlist`
+        `[activateWaitlistedUsers] Activated ${activatedUIDs.length} users from waitlist`
       );
     }
   }
