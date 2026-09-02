@@ -7,6 +7,16 @@
 // [x] Streak bonuses are deterministic and server-verifiable
 // [x] XP reason logged for debugging only — no PII in reason strings
 // [x] Waitlist operations are read-only on client; writes via Cloud Functions
+// [x] Same-school gate on every nearby read — fetchNearbyUsers takes a
+//     CommunityScope and constrains the query by schoolId, or by a
+//     server-confirmed Spring Break destination. firestore.rules evaluates the
+//     same predicate per document, so an unconstrained query fails outright.
+// [x] Profile writes are field-whitelisted — saveProfileEdits never sends
+//     schoolId, enrollmentStatus, studentIDStatus, verifiedAge, trustLevel,
+//     accountStatus, activeIntents or datingCooldownUntil, all of which are
+//     Cloud-Function-owned and rejected by rules on any client write
+// [x] Trust level is no longer client-writable — updateTrustLevel was removed
+// [x] Schools and Spring Break destinations are read-only reference data
 // [x] No raw coordinates — geohash only
 // [x] Minimal data returned — fetch methods return only needed fields
 // [x] Photo uploads scoped to authenticated user's storage path
@@ -32,6 +42,8 @@ final class FirestoreService {
     private var reportsCollection: CollectionReference { db.collection("reports") }
     private var waitlistCollection: CollectionReference { db.collection("waitlist") }
     private var genderStatsCollection: CollectionReference { db.collection("global_gender_stats") }
+    private var schoolsCollection: CollectionReference { db.collection("schools") }
+    private var destinationsCollection: CollectionReference { db.collection("spring_break_destinations") }
 
     // MARK: - User CRUD
 
@@ -41,9 +53,63 @@ final class FirestoreService {
         return try doc.data(as: UserProfile.self)
     }
 
-    func createOrUpdateUser(_ profile: UserProfile) async throws {
+    /// Creates the initial profile document for a newly authenticated user.
+    ///
+    /// Only ever called with a freshly built minimal profile, whose
+    /// server-owned fields are at their least-privileged defaults (no schoolId,
+    /// `.unverified`, `.none`, `.bronze`). `firestore.rules` enforces exactly
+    /// that on create, so a tampered client cannot seed itself a community.
+    func createUser(_ profile: UserProfile) async throws {
         guard let uid = profile.id else { throw AppError.missingUID }
         try usersCollection.document(uid).setData(from: profile, merge: true)
+    }
+
+    /// Writes the parts of a profile the user actually owns.
+    ///
+    /// The field list is a whitelist, not a filter on a full encode: everything
+    /// that decides access — schoolId, enrollmentStatus, studentIDStatus,
+    /// verifiedAge, trustLevel, accountStatus, activeIntents,
+    /// datingCooldownUntil, springBreakDestinationId — is issued by a Cloud
+    /// Function and rejected by `firestore.rules` on any client write. Sending
+    /// them here would fail the whole update, so they are never sent.
+    ///
+    /// Intents are deliberately absent: they change only through the
+    /// `setActiveIntents` callable, which is what starts the 24h Dating cooldown.
+    func saveProfileEdits(_ profile: UserProfile) async throws {
+        guard let uid = profile.id ?? Optional(profile.uid), !uid.isEmpty else {
+            throw AppError.missingUID
+        }
+
+        var data: [String: Any] = [
+            "displayName": profile.displayName,
+            "age": profile.age,
+            "bio": profile.bio,
+            "photoURLs": profile.photoURLs,
+            "selfDescriptors": profile.selfDescriptors,
+            "intentVibes": profile.intentVibes,
+            "gender": profile.gender.rawValue,
+            "socialContextPreference": profile.socialContextPreference,
+            "isProfileComplete": profile.isProfileComplete,
+            "lastActive": FieldValue.serverTimestamp(),
+            "preferences.ageRange.lowerBound": profile.preferences.ageRange.lowerBound,
+            "preferences.ageRange.upperBound": profile.preferences.ageRange.upperBound,
+            "preferences.maxDistanceMiles": profile.preferences.maxDistanceMiles,
+            "preferences.genderPreferences": profile.preferences.genderPreferences,
+            "preferences.interests": profile.preferences.interests,
+            "preferences.dealbreakers": profile.preferences.dealbreakers,
+            "preferences.compatibilityThreshold": profile.preferences.compatibilityThreshold,
+            "privacySettings.questModeEnabled": profile.privacySettings.questModeEnabled,
+            "privacySettings.visibilityRadius": profile.privacySettings.visibilityRadius,
+            "privacySettings.alertLimit": profile.privacySettings.alertLimit,
+            "privacySettings.locationSharingMode": profile.privacySettings.locationSharingMode.rawValue,
+            "privacySettings.showInCommunityEvents": profile.privacySettings.showInCommunityEvents
+        ]
+
+        if let zones = try? Firestore.Encoder().encode(profile.privacySettings.autoPauseZones) {
+            data["privacySettings.autoPauseZones"] = zones
+        }
+
+        try await usersCollection.document(uid).updateData(data)
     }
 
     func updateQuestModeStatus(uid: String, enabled: Bool) async throws {
@@ -55,36 +121,134 @@ final class FirestoreService {
 
     // MARK: - Nearby Users (Geohash Query)
 
-    /// Fetches active users within the geohash neighborhood.
+    /// Fetches candidate users inside the caller's community.
+    ///
+    /// The scope is not a hint — it is the query's first constraint, and it has
+    /// to be. `firestore.rules` evaluates its read predicate against every
+    /// document a list query returns, so a query that reaches beyond the
+    /// caller's own school (or their server-confirmed Spring Break destination)
+    /// fails as a whole rather than returning a trimmed set.
+    ///
+    /// `.none` — off campus, no live destination — returns nothing without
+    /// touching the network. That is the auto-pause case.
+    ///
     /// Pass `debugForceMock: true` (DEBUG builds only) to get deterministic mock
     /// nearby users for exercising the proximity → alert → icebreaker flow on a
     /// single device.
-    func fetchNearbyUsers(geohash: String, excludeUID: String, debugForceMock: Bool = false) async throws -> [UserProfile] {
+    func fetchNearbyUsers(scope: CommunityScope,
+                          excludeUID: String,
+                          debugForceMock: Bool = false) async throws -> [UserProfile] {
         #if DEBUG
         if debugForceMock {
-            return mockNearbyUsersForTesting(excludeUID: excludeUID)
+            return mockNearbyUsersForTesting(excludeUID: excludeUID, scope: scope)
         }
         #endif
 
+        let query: Query
+        switch scope {
+        case .none:
+            return []
+
+        case .campus(let schoolId):
+            guard !schoolId.isEmpty else { return [] }
+            query = usersCollection
+                .whereField("schoolId", isEqualTo: schoolId)
+                .whereField("accountStatus", isEqualTo: AccountStatus.active.rawValue)
+                .whereField("privacySettings.questModeEnabled", isEqualTo: true)
+
+        case .springBreak(let destinationId, _):
+            // Cross-school, but only among users the backend has confirmed at
+            // this same destination. A local or an unverified tourist has no
+            // springBreakDestinationId and cannot appear here.
+            guard !destinationId.isEmpty else { return [] }
+            query = usersCollection
+                .whereField("springBreakDestinationId", isEqualTo: destinationId)
+                .whereField("accountStatus", isEqualTo: AccountStatus.active.rawValue)
+                .whereField("privacySettings.questModeEnabled", isEqualTo: true)
+        }
+
         // TODO: Use GeoFire or geohash range queries for efficient proximity search
-        let snapshot = try await usersCollection
-            .whereField("privacySettings.questModeEnabled", isEqualTo: true)
-            .limit(to: 50)
-            .getDocuments()
+        let snapshot = try await query.limit(to: 50).getDocuments()
 
         return try snapshot.documents
             .compactMap { try $0.data(as: UserProfile.self) }
             .filter { $0.uid != excludeUID }
     }
 
+    // MARK: - Schools & Destinations (read-only reference data)
+
+    /// Reads a school document. Admin-write in `firestore.rules`; the client can
+    /// only ever read one.
+    func fetchSchool(schoolId: String) async throws -> School? {
+        let doc = try await schoolsCollection.document(schoolId).getDocument()
+        guard doc.exists else { return nil }
+        return try doc.data(as: School.self)
+    }
+
+    /// Lists the active schools, for the incoming-student picker.
+    ///
+    /// Reference data. `firestore.rules` makes `schools/*` auth-read and
+    /// admin-write, so a client can read this list but never add to it — which
+    /// matters, because a school document carries the allowlisted email domains.
+    func fetchSchools() async throws -> [School] {
+        let snapshot = try await schoolsCollection
+            .whereField("isActive", isEqualTo: true)
+            .limit(to: 100)
+            .getDocuments()
+        return try snapshot.documents.compactMap { try $0.data(as: School.self) }
+    }
+
+    /// Reads the currently switched-on Spring Break destinations.
+    ///
+    /// `isActive` is the only server-side filter available to a query; the dated
+    /// window is checked on-device via `SpringBreakDestination.isLive(at:)` and
+    /// again by the backend before it will confirm presence. The client cannot
+    /// widen a window it does not own.
+    func fetchActiveSpringBreakDestinations() async throws -> [SpringBreakDestination] {
+        let snapshot = try await destinationsCollection
+            .whereField("isActive", isEqualTo: true)
+            .limit(to: 20)
+            .getDocuments()
+        return try snapshot.documents.compactMap { try $0.data(as: SpringBreakDestination.self) }
+    }
+
+    /// Reads the caller's own verification record. Owner-only by rule — this
+    /// call returns nothing for any other uid, by design.
+    func fetchVerificationRecord(uid: String, recordId: String) async throws -> VerificationRecord? {
+        let doc = try await usersCollection
+            .document(uid)
+            .collection("verification")
+            .document(recordId)
+            .getDocument()
+        guard doc.exists else { return nil }
+        return try doc.data(as: VerificationRecord.self)
+    }
+
     #if DEBUG
     /// Deterministic mock nearby users for single-device testing. DEBUG-only —
     /// never compiled into release. Covers different genders, trust tiers, and
     /// intent vibes so the full match → alert → icebreaker path can be exercised.
-    private func mockNearbyUsersForTesting(excludeUID: String) -> [UserProfile] {
+    ///
+    /// The mocks take their school from the caller's scope, so the demo can never
+    /// model a cross-campus pool that production would reject. Under `.none` they
+    /// return nothing, which is what an off-campus device should see.
+    private func mockNearbyUsersForTesting(excludeUID: String,
+                                           scope: CommunityScope) -> [UserProfile] {
+        let mockSchoolId: String
+        switch scope {
+        case .none:
+            return []
+        case .campus(let schoolId):
+            mockSchoolId = schoolId
+        case .springBreak:
+            // Inside a live destination the pool is cross-school by design, so
+            // the demo candidates come from a different school on purpose.
+            mockSchoolId = "demo_visiting_school"
+        }
+
         func make(uid: String, name: String, age: Int, gender: Gender,
                   trust: UserProfile.TrustLevel, interests: [String],
-                  relationships: [MatchPreferences.RelationshipType],
+                  intents: [Intent],
                   vibes: [String]) -> UserProfile {
             UserProfile(
                 uid: uid,
@@ -100,7 +264,6 @@ final class FirestoreService {
                 preferences: MatchPreferences(
                     ageRange: 21...40,
                     maxDistanceMiles: 0.25,
-                    relationshipTypes: relationships,
                     genderPreferences: [],
                     interests: interests,
                     dealbreakers: [],
@@ -119,6 +282,11 @@ final class FirestoreService {
                 trustScore: 0.85,
                 createdAt: Date(),
                 lastActive: Date(),
+                schoolId: mockSchoolId,
+                schoolDisplayName: "Demo Campus",
+                enrollmentStatus: .enrolled,
+                studentIDStatus: .faceMatched,
+                activeIntents: intents,
                 gender: gender,
                 accountStatus: .active,
                 intentVibes: vibes,
@@ -129,13 +297,13 @@ final class FirestoreService {
         let mocks = [
             make(uid: "test_user_a", name: "Test User A", age: 26, gender: .female,
                  trust: .gold, interests: ["coffee", "hiking", "coding"],
-                 relationships: [.longTerm], vibes: ["adventurous", "genuine", "spontaneous"]),
+                 intents: [.hangout, .study], vibes: ["adventurous", "genuine", "spontaneous"]),
             make(uid: "test_user_b", name: "Test User B", age: 29, gender: .male,
                  trust: .silver, interests: ["coffee", "gaming"],
-                 relationships: [.casual], vibes: ["genuine", "chill"]),
+                 intents: [.study], vibes: ["genuine", "chill"]),
             make(uid: "test_user_c", name: "Test User C", age: 24, gender: .nonBinary,
                  trust: .platinum, interests: ["art", "coffee", "travel"],
-                 relationships: [.longTerm, .friendship], vibes: ["creative", "spontaneous", "genuine"])
+                 intents: [.hangout, .friendship, .event], vibes: ["creative", "spontaneous", "genuine"])
         ]
 
         return mocks.filter { $0.uid != excludeUID }
@@ -169,6 +337,28 @@ final class FirestoreService {
         metadata.contentType = "image/jpeg"
         _ = try await ref.putDataAsync(imageData, metadata: metadata)
         return try await ref.downloadURL()
+    }
+
+    // MARK: - Verification Artefact Upload
+
+    /// Uploads a student ID photo or liveness frame to the write-only
+    /// verification prefix and returns its **storage path**, not a URL.
+    ///
+    /// A path, not a URL, on purpose: `storage.rules` makes objects under
+    /// `verification/{uid}/` unreadable to every client — including the person
+    /// who uploaded them. Only the Admin SDK in `studentIdVerification.ts` can
+    /// read them, and it deletes them once it has recorded the outcome. That is
+    /// what makes "a student ID image can never appear on a profile" a property
+    /// of the system rather than a promise in this file.
+    func uploadVerificationArtifact(_ imageData: Data,
+                                    uid: String,
+                                    filename: String) async throws -> String {
+        let path = "verification/\(uid)/\(filename)"
+        let ref = storage.reference().child(path)
+        let metadata = StorageMetadata()
+        metadata.contentType = "image/jpeg"
+        _ = try await ref.putDataAsync(imageData, metadata: metadata)
+        return path
     }
 
     // MARK: - Photo Deletion (cleanup on failed upload)
@@ -222,12 +412,13 @@ final class FirestoreService {
     }
 
     // MARK: - Trust Level
-
-    func updateTrustLevel(uid: String, level: UserProfile.TrustLevel) async throws {
-        try await usersCollection.document(uid).updateData([
-            "trustLevel": level.rawValue
-        ])
-    }
+    //
+    // There is deliberately no client write path for trustLevel. It is derived
+    // server-side from verification depth and post-meet ratings, and
+    // `firestore.rules` rejects any client write to it. The old
+    // `updateTrustLevel(uid:level:)` was removed rather than left to fail at
+    // runtime: a method that can only ever be denied is a trap for the next
+    // caller.
 
     // MARK: - Account Deletion
 

@@ -1,14 +1,22 @@
 // MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets, API keys, or tokens
-// [x] Identity verification proxied through Cloud Function — API keys never on client
-// [x] verifyIdentity() calls server-side createVerificationSession + onVerificationComplete
-// [x] trustScore delta applied server-side; client reads result only
-// [x] Returned data is minimal: {verificationStatus, trustScoreDelta, badge} — no raw ID data
-// [x] No PII logged — only verification state transitions and badge names
+// [x] The student ID decision is made by studentIdVerification.ts. The on-device
+//     Vision comparison here is a pre-flight hint shown to the user before an
+//     upload — it sets no field and gates nothing.
+// [x] studentIDStatus, verifiedAge and trustLevel are read back from the server,
+//     never written by this client; firestore.rules rejects such a write
+// [x] Student ID photos and liveness frames go to the write-only Storage prefix
+//     verification/{uid}/ — unreadable to every client including the uploader,
+//     deleted by the function once the outcome is recorded, and never written to
+//     a profile document or a nearby payload
+// [x] Returned data is minimal: {studentIDStatus, capability booleans} — no image,
+//     no score, no extracted document text
+// [x] No PII logged — status transitions only; no uid, name, DOB or document text
 // [x] Rate limiting enforced server-side (3 attempts/hour) — client cannot bypass
-// [x] Analytics events contain no raw UIDs or PII — only status and trust delta
+// [x] Analytics events contain no raw UIDs or PII — only status
 // [x] Group anomaly detection stub for POTENTIAL_ISSUES.md #6
-// [x] Minimal data exposure — only verification + account status checks
+// [x] isSafeToAlert is community-aware: it fails closed unless the candidate can
+//     start Quest Mode, which requires the school gate and a verified student ID
 // [x] §02 — verification and report failures surface generic copy; the backend
 //     error goes to the log, never onto an onboarding or reporting screen
 
@@ -17,6 +25,7 @@ import Combine
 import UIKit
 import Vision
 import AVFoundation
+import FirebaseAuth
 import FirebaseFirestore
 import FirebaseFunctions
 
@@ -30,15 +39,26 @@ final class SafetyVerifier: ObservableObject {
 
     /// Results populated during verification
     private(set) var livenessCheckPassed = false
-    private(set) var faceMatchPassed = false
+
+    /// On-device face-comparison hint. Named `Hint` deliberately: it exists so a
+    /// user can retake an obviously bad photo before spending an upload and one
+    /// of their three hourly attempts. The server's decision is the only one
+    /// that changes `studentIDStatus`.
+    private(set) var faceMatchHint: Bool?
+
     private(set) var idValidationResult: IDValidationResult?
 
-    /// Stored selfie for face matching against ID
+    /// The server's answer. This is the value the rest of the app reads.
+    @Published private(set) var studentIDStatus: StudentIDStatus = .none
+
+    /// Stored liveness selfie, uploaded alongside the student ID card photo.
     private var selfieImage: UIImage?
 
     let livenessDetector = LivenessDetector()
 
-    private let faceMatchThreshold: Double = 0.70
+    /// Threshold for the on-device hint only. The authoritative threshold lives
+    /// in studentIdVerification.ts and is deliberately higher.
+    private let faceMatchHintThreshold: Double = 0.70
     private lazy var functions = Functions.functions()
     private let analytics = AnalyticsService.shared
 
@@ -72,7 +92,7 @@ final class SafetyVerifier: ObservableObject {
     /// Initiates verification: liveness check → ID scan → face match → age check.
     func beginVerification() {
         livenessCheckPassed = false
-        faceMatchPassed = false
+        faceMatchHint = nil
         idValidationResult = nil
         selfieImage = nil
         livenessDetector.start()
@@ -84,6 +104,12 @@ final class SafetyVerifier: ObservableObject {
     // MARK: - Identity Verification (Cloud Function Proxy)
 
     /// Calls the server-side identity verification Cloud Function.
+    ///
+    /// This is the **optional** third-party document check, not the campus gate.
+    /// Quest Mode, the Dating intent and NameDrop all read `studentIDStatus`,
+    /// which only `submitStudentIDVerification` can set. Nothing here opens any
+    /// of them; it exists for accounts that want an extra verification signal.
+    ///
     /// The Persona/Onfido API key lives on the server — never on the client.
     /// Returns a badge for UI display and updates trustScore server-side.
     func verifyIdentity() async -> VerificationBadge {
@@ -166,56 +192,125 @@ final class SafetyVerifier: ObservableObject {
 
     // MARK: - Document Scan + Face Match + Age Verification
 
-    /// Processes a driver's license or passport image.
-    func processIDDocument(_ image: UIImage, profileAge: Int) async {
+    /// Processes a **student ID card** photo.
+    ///
+    /// The on-device work here is advisory: OCR for an obvious age problem and a
+    /// landmark-geometry face comparison, both shown to the user so they can
+    /// retake a bad photo. Neither decides anything. The card and the liveness
+    /// frame are then uploaded to the write-only verification prefix and
+    /// `studentIdVerification.ts` makes the call — because a client that could
+    /// decide its own face match could decide to pass.
+    ///
+    /// Passing this opens Quest Mode. Passing it *with* a face match opens the
+    /// Dating intent and NameDrop.
+    func processStudentIDCard(_ image: UIImage, profileAge: Int) async {
+        guard livenessCheckPassed, let selfie = selfieImage else {
+            verificationState = .failed("Finish the liveness check first.")
+            return
+        }
+
         verificationState = .uploading
 
         do {
-            // Step 1: OCR text extraction
+            // Pre-flight 1: can we read the card at all? Catches a blurred or
+            // upside-down photo before it costs an upload.
             let extractedText = try await performOCR(on: image)
             guard !extractedText.isEmpty else {
-                verificationState = .failed("Could not read ID. Ensure the document is clear and well-lit.")
+                verificationState = .failed("Could not read your student ID. Ensure the card is clear and well-lit.")
                 return
             }
 
-            // Step 2: Age verification from OCR
+            // Pre-flight 2: age sanity. Advisory — the server re-reads the card
+            // and it is the server's number that gates the Dating intent.
             let ageResult = parseAndValidateID(extractedText, profileAge: profileAge)
             idValidationResult = ageResult
-
             if let reason = ageResult.failureReason, !ageResult.isValid {
                 verificationState = .failed(reason)
                 return
             }
 
-            // Step 3: Face match (selfie vs ID photo)
-            if let selfie = selfieImage {
-                verificationState = .processing
-                let similarity = try await compareFaces(selfie: selfie, idPhoto: image)
-                faceMatchPassed = similarity >= faceMatchThreshold
+            // Pre-flight 3: face comparison hint.
+            let similarity = try await compareFaces(selfie: selfie, idPhoto: image)
+            faceMatchHint = similarity >= faceMatchHintThreshold
 
-                if !faceMatchPassed {
-                    verificationState = .failed("Your selfie doesn't match your ID photo. Please try again.")
-                    return
-                }
-            }
-
-            // Step 4: Proxy to server-side verification for authoritative result
+            // Upload and let the server decide.
             verificationState = .processing
-            let badge = await verifyIdentity()
-
-            // If server verification isn't available yet, fall back to local result
-            if badge == .none && faceMatchPassed && livenessCheckPassed {
-                verificationState = .verified
-                verificationBadge = .verified
-            }
+            try await submitToServer(idCard: image, livenessFrame: selfie)
         } catch {
             // §02: `.failed`'s message is rendered verbatim by
-            // VerificationStepView, so it must read like the hand-written cases
-            // above it — not like a Firestore or Vision error. A raw
+            // StudentIDStepView, so it must read like the hand-written cases
+            // above it — not like a Firestore, Storage or Vision error. A raw
             // `permission-denied` here would print collection and rule shape
             // onto an onboarding screen.
             verificationState = .failed("Verification could not be completed. Please try again.")
-            Log.safety.error("Verification failed: \(error.localizedDescription)")
+            Log.safety.error("Student ID verification failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Uploads the artefacts and calls the verification function.
+    ///
+    /// The upload targets `verification/{uid}/…`, which `storage.rules` makes
+    /// create-only for the owner and readable by nobody. The function deletes
+    /// both objects once it has recorded an outcome, so neither the card nor the
+    /// frame outlives the decision.
+    private func submitToServer(idCard: UIImage, livenessFrame: UIImage) async throws {
+        guard let uid = Auth.auth().currentUser?.uid else {
+            verificationState = .failed("Verification could not be completed. Please try again.")
+            return
+        }
+
+        guard let cardData = idCard.jpegData(compressionQuality: 0.85),
+              let frameData = livenessFrame.jpegData(compressionQuality: 0.85) else {
+            verificationState = .failed("Verification could not be completed. Please try again.")
+            return
+        }
+
+        let stamp = UUID().uuidString
+        let service = FirestoreService.shared
+
+        let cardPath = try await service.uploadVerificationArtifact(
+            cardData, uid: uid, filename: "studentid_\(stamp).jpg"
+        )
+        let framePath = try await service.uploadVerificationArtifact(
+            frameData, uid: uid, filename: "liveness_\(stamp).jpg"
+        )
+
+        do {
+            let result = try await functions
+                .httpsCallable("submitStudentIDVerification")
+                .call([
+                    "studentIDStoragePath": cardPath,
+                    "livenessFrameStoragePaths": [framePath]
+                ])
+
+            let payload = result.data as? [String: Any]
+            let statusRaw = payload?["studentIDStatus"] as? String ?? "none"
+            studentIDStatus = StudentIDStatus(rawValue: statusRaw) ?? .none
+
+            // firestore.rules reads the claim, not the profile field, so the
+            // token has to be refreshed before Quest Mode can actually query.
+            await SchoolGateManager.shared.refreshClaims()
+
+            switch studentIDStatus {
+            case .faceMatched, .verified:
+                verificationState = .verified
+                verificationBadge = .verified
+            case .pending:
+                verificationState = .processing
+                verificationBadge = .pending
+            case .rejected, .none:
+                verificationState = .failed("We couldn't verify your student ID. Try again in good lighting.")
+                verificationBadge = .flagged
+            }
+
+            analytics.logVerificationCompleted(status: statusRaw, trustDelta: 0)
+            Log.safety.debug("Student ID verification returned \(statusRaw)")
+        } catch {
+            // The function returns one generic message for every rejection
+            // reason on purpose; do not try to unpack it here.
+            verificationState = .failed("We couldn't verify your student ID. Try again in good lighting.")
+            verificationBadge = .none
+            Log.safety.error("Student ID verification call failed: \(error.localizedDescription)")
         }
     }
 
@@ -434,14 +529,20 @@ final class SafetyVerifier: ObservableObject {
 
     // MARK: - Trust Level Mapping
 
-    /// Computes the trust level achieved from the verification results.
+    /// The trust level implied by the server's verification outcome.
+    ///
+    /// Read-only, and derived from `studentIDStatus` rather than from local
+    /// flags: the on-device face hint must not be able to imply Gold. Nothing
+    /// writes `trustLevel` from the client — `studentIdVerification.ts` sets it
+    /// and `firestore.rules` refuses any client write. This exists so a view can
+    /// render the tier it is about to be granted, not to grant it.
     var achievedTrustLevel: UserProfile.TrustLevel {
-        if faceMatchPassed && livenessCheckPassed && (idValidationResult?.extractedAge != nil) {
-            return .gold
-        } else if livenessCheckPassed {
-            return .silver
+        switch studentIDStatus {
+        case .faceMatched:            return .gold
+        case .verified:               return .silver
+        case .pending, .rejected, .none:
+            return livenessCheckPassed ? .silver : .bronze
         }
-        return .bronze
     }
 
     // MARK: - Reporting
@@ -453,7 +554,10 @@ final class SafetyVerifier: ObservableObject {
                 reason: reason.rawValue,
                 details: details
             )
-            Log.safety.debug("Report submitted for \(reportedUID)")
+            // Deliberately no uid: this file's compliance block claims no PII is
+            // logged, and a reported user's uid is exactly the PII that claim is
+            // about. The report itself is the audit trail.
+            Log.safety.debug("Report submitted")
         } catch {
             // §02: no backend error text in the UI — and least of all here.
             // Someone filing a harassment report needs to know it did not send
@@ -476,10 +580,17 @@ final class SafetyVerifier: ObservableObject {
     // MARK: - Proximity Safety Gate
 
     /// Critical safety gate used by MatchManager.shouldTriggerAlert.
-    /// Phase 1: basic verification + active account check.
-    /// Future: group anomaly detection, trustLevel, unsafe report history.
+    ///
+    /// Community-aware and fail-closed. `canStartQuestMode` folds in the three
+    /// facts that matter before anyone's phone buzzes: a server-issued school, an
+    /// enrollment status that still grants access, and a verified student ID.
+    /// An account that was suspended, graduated, or had its ID revoked stops
+    /// clearing this gate the moment the server says so.
+    ///
+    /// Future: group anomaly detection, unsafe report history.
     static func isSafeToAlert(_ match: UserProfile) -> Bool {
         guard match.accountStatus == .active else { return false }
+        guard match.canStartQuestMode else { return false }
         return match.verificationStatus == .verified
     }
 
