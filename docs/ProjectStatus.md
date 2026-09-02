@@ -49,15 +49,59 @@ except the two noted as still open.
 
 **Still open, and both are structural rather than oversights:**
 
-1. **No Firestore Security Rules.** This is the big one. §02 and §03 both name the
-   server as authoritative, and today nothing is: alert caps, the XP clamp, trust
-   recalculation and account status are all enforced in client code that a
-   determined user can simply not run. The client-side checks are honestly
-   labelled as advisory now, everywhere, but labelling is not enforcing.
+1. ~~**No Firestore Security Rules.**~~ **Closed (September 2).** See the campus
+   pivot below.
 2. **Motion and altitude filtering do not exist.** `CMMotionActivityManager` and
    `CMAltimeter` appear in no source file. README stated both as shipped and has
    been corrected; `EDGE_CASES_AND_OBJECTIONS.md` was already honest in calling
    them proposals. Vertical density and vehicle noise are unmitigated.
+
+## Campus pivot (September 2)
+
+The product moved from a city-scale proximity dating app to a **campus-gated,
+multi-intent** one. Dating is now one of five intents, off by default, and the
+only one carrying the gender-balance machinery.
+
+**What was built**
+
+- **Three gates**, each reading only server-issued fields:
+  `canEnterCampusCommunity` (school gate) → `canStartQuestMode` (student ID card
+  photo + liveness) → `canUseDatingIntent` (ID ↔ liveness face match + verified
+  adult age). `canNameDrop` sits alongside the third.
+- **`firestore.rules` + `storage.rules` + `firebase.json` + `firestore.indexes.json`.**
+  The single largest open gap from the August audit is closed. The rules carry
+  the same-school predicate (evaluated per document, so an unconstrained nearby
+  query fails outright), the server-owned field list, the write-only verification
+  prefix, and the reveal-stage gate on NameDrop. Authorization travels as Firebase
+  Auth custom claims, which a client cannot forge.
+- **Cloud Functions**: `schoolGate.ts` (phone + `.edu` magic link / school OAuth /
+  enrollment proof; issues `schoolId` and `enrollmentStatus`),
+  `studentIdVerification.ts` (server-side face match; deletes the artefacts once
+  the outcome is recorded), `intents.ts` (intents + the 24h Dating-off cooldown).
+  `balanceMonitor.ts` is now per-school and counts Dating-gated users only.
+- **Spring Break Mode**: the one exception to same-school. Server-dated windows,
+  dual server-confirmed presence, verified students only, 45-minute claim TTL.
+- **48 unit tests**, all passing, covering the three gates, the same-school
+  predicate, the intent lock, the cooldown and the fail-closed decoders.
+
+**What this cost**
+
+- `MatchPreferences.RelationshipType` is gone, replaced by `Intent`.
+  `ScoreBreakdown.relationshipTypeMatch` became `intentMatch`.
+- `FirestoreService.updateTrustLevel` was removed rather than left to fail:
+  `trustLevel` is server-owned and a client write is now denied.
+- `VerificationStepView` was deleted — it described a driver's licence or
+  passport scan, which is no longer the flow. `StudentIDStepView` replaces it.
+- `GamificationService.awardXP(uid:)` and `ReferralManager.processReferralReward`
+  write another user's document. The rules now correctly deny that, so **those
+  paths are broken until they move server-side.** This is a real regression and
+  it is deliberate: a client-writable XP counter is a free XP faucet.
+
+**What is unproven**
+
+The rules have never been executed. There is no Firebase CLI in this environment,
+so no `firebase emulators:exec` and no rules unit tests. Everything above is
+reasoned and reviewed, not run. That is the top item on the list below.
 
 ## Current phase: DesignSystem v2 UI rework
 
@@ -66,7 +110,9 @@ from the design handoff. Functionality is unchanged throughout: the reveal
 mechanic, stage machine, trust ladder and `#if DEBUG` demo path all behave
 exactly as before.
 
-**27 of 46 view files are now on v2; 17 still read `enum DQ`.**
+**28 of 48 view files are now on v2; 17 still read `enum DQ`.** The three new
+campus surfaces (`SchoolGateView`, `StudentIDStepView`, `StudentIDPendingView`)
+were written on v2.
 
 **Wave 2 — forms, auth & system chrome (newest):** a second handoff drop added a
 form vocabulary to the spec, plus Radar and Settings mocks. `DQFormParts` (1,005
@@ -95,8 +141,8 @@ eight v1 components.
 **Blocked on features, not styling:** messaging (no `Message` model, so chat is
 unwired and stage 4 still reads "Done"), live-location sharing and check-in
 scheduling (both safety rows ship visibly unavailable), and a quest content
-model. `TrustCenterView` is still unreachable — the Settings Verification row
-pushes a "Verification coming soon" empty state where it belongs.
+model. `TrustCenterView` is now reachable — the Settings row points at it, and
+the tier copy describes the campus gate rather than a generic identity ladder.
 
 Fonts are bundled and verified: Plus Jakarta Sans + IBM Plex Mono, SIL OFL 1.1,
 in `Resources/Fonts` via a new synchronized group.
@@ -106,6 +152,11 @@ Full detail — including everything deferred and why — is in
 
 ## Immediate next steps
 
+0. **Execute the security rules.** They are the enforcement boundary for the
+   entire campus gate and they have never run. Install the Firebase CLI, add
+   `@firebase/rules-unit-testing` cases for the same-school predicate, the
+   server-owned-field rejections and the cross-school Spring Break path, and put
+   them in CI. Until this happens the gate is reviewed, not verified.
 1. **Run it.** This is now the only thing standing between the rework and
    confidence, and it has been the top item for two waves running. Nothing has
    been exercised at runtime: the floating tab bar's safe-area handling, the
@@ -120,8 +171,9 @@ Full detail — including everything deferred and why — is in
    touching `RadarView`.
 3. Add mock fixtures + SwiftUI previews so v2 surfaces can be iterated without a
    Firebase sign-in.
-4. Point the Settings Verification row at `TrustCenterView` instead of the
-   placeholder — a one-line change.
+4. Move `GamificationService.awardXP(uid:)` and the referral reward path into
+   Cloud Functions. The rules deny them now, so they are broken, not merely
+   advisory.
 5. Define a quest content model — the QuestCard is specced around one that does
    not exist.
 6. Design messaging, then wire `ConnectedChatView` and restore `Say hello`.
@@ -135,8 +187,12 @@ Full detail — including everything deferred and why — is in
 
 ## Carried over (unchanged from Phase 1/2)
 
-- Firestore Security Rules still needed to enforce alert caps server-side;
-  client caps remain advisory.
+- Firestore Security Rules are written and cover alert-adjacent server-owned
+  fields; client caps remain advisory by design, with the rules as the boundary.
+  Unexecuted — see step 0.
+- The Spring Break `sbDest` claim has a 45-minute TTL that nothing re-confirms on
+  a timer, so a user standing at a destination for over 45 minutes silently drops
+  back to same-school until the next region crossing.
 - `ProximityService` UWB/BLE events not yet wired into
   `MatchManager.handleNearbyEvent`.
 - AI preference alignment (dimension 4) still a distance-tolerance check.

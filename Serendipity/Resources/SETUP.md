@@ -81,39 +81,71 @@ Add in Xcode → File → Add Package Dependencies:
 1. Create a project at https://console.firebase.google.com
 2. Add an iOS app with your bundle ID
 3. Download `GoogleService-Info.plist` and add it to the Xcode project root (gitignored — do not commit)
-4. Enable **Authentication** → Email/Password + Google
-5. Enable **Firestore** with the following baseline security rules:
+4. Enable **Authentication** → **Phone**, **Email link (passwordless)**, and **Google**.
+   Phone plus an allowlisted `.edu` email link is the school gate; Google (and
+   Microsoft, via OIDC) covers the school-tenant OAuth path.
+5. Enable **Firestore**, **Storage** and **Cloud Functions**.
+6. Deploy the security rules. **They are not optional** — they are the enforcement
+   boundary for the campus gate, and without them the same-school rule is a
+   client-side courtesy filter:
 
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /users/{uid} {
-      allow read: if request.auth != null;
-      // Client may only update alert-tracking fields — all other fields are server-authoritative
-      allow write: if request.auth.uid == uid;
-    }
-    match /matches/{matchId} {
-      allow read, write: if request.auth != null &&
-        (resource.data.userAUID == request.auth.uid ||
-         resource.data.userBUID == request.auth.uid);
-    }
-    match /encounter_sessions/{sessionId} {
-      allow read, write: if request.auth != null &&
-        (resource.data.userAUID == request.auth.uid ||
-         resource.data.userBUID == request.auth.uid);
-    }
-    match /reports/{reportId} {
-      allow create: if request.auth != null;
-      allow read: if false; // Admin SDK only
-    }
-    match /global_gender_stats/{doc} {
-      allow read: if request.auth != null;
-      allow write: if false; // Cloud Function only (balanceMonitor)
-    }
-  }
-}
-```
+   ```bash
+   firebase deploy --only firestore:rules,firestore:indexes,storage
+   ```
+
+   The rules live at the repo root, not in this file: [`firestore.rules`](../../firestore.rules)
+   and [`storage.rules`](../../storage.rules), configured by
+   [`firebase.json`](../../firebase.json). An earlier version of this document
+   inlined a "baseline" ruleset; it has been removed rather than updated, because
+   a second copy of security rules in a setup guide is a copy that will drift.
+
+7. Set the function secrets:
+
+   ```bash
+   firebase functions:secrets:set MAIL_PROVIDER_API_KEY   # .edu magic link delivery
+   firebase functions:secrets:set PHONE_HASH_SALT         # salts the stored phone hash
+   firebase functions:secrets:set FACE_MATCH_API_KEY      # student ID <-> liveness match
+   firebase functions:secrets:set PERSONA_API_KEY         # optional extra document check
+   firebase functions:secrets:set PERSONA_TEMPLATE_ID
+   ```
+
+8. Deploy the functions:
+
+   ```bash
+   firebase deploy --only functions
+   ```
+
+9. **Seed at least one school.** The app is campus-gated: with no `schools`
+   document, the gate can issue nothing and no account can reach Quest Mode.
+   Create `schools/{schoolId}` with:
+
+   | Field | Type | Notes |
+   |---|---|---|
+   | `displayName` | string | e.g. `"UCLA"`. The one place name the UI may render |
+   | `fullName` | string | e.g. `"University of California, Los Angeles"` |
+   | `allowlistedEmailDomains` | string[] | e.g. `["ucla.edu", "g.ucla.edu"]` |
+   | `oauthTenantHints` | string[] | Hosted-domain hints; the server re-checks the token |
+   | `campus.centerGeohash` | string | Precision 7. Decoded only to arm a region — never rendered |
+   | `campus.radiusMeters` | number | **Review this on a map.** Oversized fences import the surrounding neighbourhood |
+   | `isActive` | bool | `false` parks the whole community |
+
+10. **Optional — a Spring Break destination.** Create
+    `spring_break_destinations/{id}` with `displayLabel`, `centerGeohash`,
+    `radiusMeters`, `windowStart`, `windowEnd`, `isActive`, `duskLocalHour` and
+    `duskRadiusMiles`. Inside a live window this opens the cross-school pool for
+    verified students confirmed at that destination. `isActive: false` is a kill
+    switch independent of the dates.
+
+11. **Backfill existing users** (only if you have pre-campus data):
+    `firebase functions:call migrateUserProfiles`. It sets community fields to
+    their least-privileged values — it does **not** hand anyone a campus. Every
+    pre-existing account goes back through the school gate.
+
+> **Running the tests.** The XCTest host is the app itself, and `AppDelegate`
+> needs a `GoogleService-Info.plist` in the bundle to launch. Without one the
+> test runner crashes before it connects, and every test fails for that reason
+> alone. Supply your own config, or point the app at the Firebase emulator suite
+> (`firebase emulators:start`).
 
 ---
 
@@ -130,43 +162,53 @@ Serendipity/
 ├── App/
 │   ├── DateQuestARApp.swift      # @main entry, environment objects
 │   ├── AppDelegate.swift         # Firebase init, push, background config
-│   └── RootView.swift            # Auth state router (loading → unauth → onboarding → home)
+│   └── RootView.swift            # Auth state router (loading → unauth → schoolGate
+│                                 #   → enrollmentReview → studentIDPending →
+│                                 #   onboarding → waitlisted → home)
 ├── Models/
-│   ├── UserProfile.swift         # User, MatchPreferences, PrivacySettings, trust tier
+│   ├── UserProfile.swift         # User, MatchPreferences, PrivacySettings, trust tier,
+│                                 #   and the three access gates
+│   ├── Intent.swift              # Hangout/Study/Friendship/Event/Dating + overlap rules
+│   ├── School.swift              # School, CampusGeofence, SpringBreakDestination,
+│                                 #   CommunityScope, CommunityGate (the same-school rule)
 │   ├── Match.swift               # Match, ScoreBreakdown, MatchStatus
 │   ├── IcebreakerChallenge.swift # Challenge types, prompts, options
 │   ├── EncounterSession.swift    # Time-bounded session, RevealStage, progress tracking
 │   ├── GamificationProfile.swift # XP, level, login streak
 │   ├── ProximityEvent.swift      # Proximity event payloads
-│   ├── FirestoreTypes.swift      # Firestore-facing type shims
+│   ├── FirestoreTypes.swift      # Waitlist, GenderStats, VerificationRecord
 │   ├── AppError.swift            # Typed app errors
-│   └── Enums.swift               # Gender, RelationshipType, AccountStatus, etc.
+│   └── Enums.swift               # Gender, AccountStatus, EnrollmentStatus,
+│                                 #   StudentIDStatus, SchoolGateMethod
 ├── ViewModels/
 │   └── AuthViewModel.swift       # Auth state, sign in/up, biometrics, app routing
 ├── Managers/
+│   ├── SchoolGateManager.swift   # Phone + .edu link / OAuth / enrollment proof; Keychain
 │   ├── MatchManager.swift        # AI scoring, quest mode, icebreaker dispatch, DEBUG demo path
-│   ├── AlertCapManager.swift     # Asymmetric daily alert caps (advisory; Firestore rules authoritative)
-│   ├── BalanceEnforcer.swift     # Real-time gender ratio gate + women-first queuing
+│   ├── AlertCapManager.swift     # Dating-only daily caps (advisory; Firestore rules authoritative)
+│   ├── BalanceEnforcer.swift     # Per-school Dating ratio gate + women-first queuing
 │   ├── RevealManager.swift       # EncounterSession state transitions, photo reveal
 │   ├── LivenessDetector.swift    # Vision-based liveness check during onboarding
-│   ├── SafetyVerifier.swift      # Group anomaly detection, reporting, account flags
+│   ├── SafetyVerifier.swift      # Student ID submission, reporting, account flags
 │   ├── XPManager.swift           # XP grants, level progression
 │   └── ReferralManager.swift     # Referral code validation + reward multipliers
 ├── Services/
 │   ├── FirestoreService.swift    # All Firestore CRUD, atomic transactions
-│   ├── LocationService.swift     # Background location, geohash encoding, haptics
+│   ├── LocationService.swift     # Background location, geohash, campus + Spring Break
+│                                 #   geofences, CommunityScope, haptics
 │   ├── ProximityService.swift    # NearbyInteraction (UWB) + CoreBluetooth (BLE)
 │   ├── DemoProximityProvider.swift # In-memory walk-up simulation (DEBUG demo)
 │   ├── GamificationService.swift # XP/badge writes, Remote Config multipliers
 │   └── AnalyticsService.swift    # Firebase Analytics (no PII; UIDs SHA256-hashed)
 ├── Views/
-│   ├── Auth/                     # SplashView, OnboardingView                     [v1]
-│   ├── Onboarding/               # ProfileSetupView + 7 steps [v2]; LivenessCheck, Waitlist [v1]
+│   ├── Auth/                     # SplashView, OnboardingView [v1]; SchoolGateView [v2]
+│   ├── Onboarding/               # ProfileSetupView + steps, StudentIDStepView,
+│                                 #   StudentIDPendingView [v2]; LivenessCheck, Waitlist [v1]
 │   ├── Home/                     # HomeView — QuestCard, DemoControl, signals     [v2]
 │   ├── Encounter/                # EncounterView — the reveal ladder (#if DEBUG)  [v2]
 │   ├── Icebreaker/               # IcebreakerView [v2]; NameDrop, PostMeetRating  [v1]
 │   ├── Chat/                     # ConnectedChatView — built, not yet reachable   [v2]
-│   ├── Trust/                    # TrustCenterView — built, not yet reachable     [v2]
+│   ├── Trust/                    # TrustCenterView — reachable from Settings       [v2]
 │   ├── Safety/                   # SafetySheetView                                [v2]
 │   ├── Radar/                    # RadarView, ARViewContainer                     [v1]
 │   ├── Settings/                 # SettingsView, pause zones, data rights, report [v2]
