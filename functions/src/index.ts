@@ -18,6 +18,26 @@ export {
   activateWaitlistedUsers,
 } from "./onUserSignup";
 
+// MARK: - School Gate (Fizz-style: phone + .edu magic link / OAuth / enrollment proof)
+// Issues schoolId and enrollmentStatus. The client never self-promotes.
+export {
+  requestSchoolMagicLink,
+  completeSchoolGate,
+  submitEnrollmentProof,
+  reviewEnrollmentProof,
+  confirmDestinationPresence,
+  clearDestinationPresence,
+} from "./schoolGate";
+
+// MARK: - Student ID + Liveness (Quest Mode, Dating and NameDrop gates)
+export {
+  submitStudentIDVerification,
+  revokeStudentIDVerification,
+} from "./studentIdVerification";
+
+// MARK: - Intents (server-owned; Dating-off starts the 24h cooldown)
+export { setActiveIntents } from "./intents";
+
 // MARK: - Identity Verification (Persona/Onfido Proxy)
 export {
   createVerificationSession,

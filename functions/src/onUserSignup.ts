@@ -3,6 +3,12 @@
 // [x] Triggered by Firebase Auth onCreate — cannot be called by arbitrary clients
 // [x] Writes only to the newly created user's own document + waitlist entry
 // [x] Waitlist decision based on server-side gender stats, not client input
+// [x] The waitlist is DATING-ONLY and per-school: it is keyed on the user's own
+//     campus ratio, and only applied when the user has actually selected Dating.
+//     A man who signs up for Study is never queued.
+// [x] New accounts start with no schoolId and enrollmentStatus 'unverified' —
+//     signing up grants no community; only schoolGate.ts issues one
+// [x] activeIntents defaults to Hangout + Study; Dating is never a default
 // [x] Server timestamps used for all time fields — never trust client clock
 // [x] Minimal data written — only balance/safety defaults, no echoed PII
 
@@ -41,6 +47,17 @@ export const onUserSignup = beforeUserCreated(async (event) => {
     verificationStatus: "unverified",
     intentVibes: [],
     socialContextPreference: true,
+    // Community state: none. Signing up gets you an account, not a campus.
+    // Only schoolGate.ts issues schoolId and enrollmentStatus.
+    schoolId: null,
+    schoolDisplayName: null,
+    enrollmentStatus: "unverified",
+    studentIDStatus: "none",
+    verifiedAge: null,
+    // Hangout + Study. Dating is opt-in and needs the ID <-> liveness face match.
+    activeIntents: ["hangout", "study"],
+    datingCooldownUntil: null,
+    springBreakDestinationId: null,
   };
 
   await userDoc.set(safetyDefaults, { merge: true });
@@ -71,12 +88,18 @@ export const applyGenderDefaults = onCall(async (request) => {
     throw new HttpsError("invalid-argument", "Invalid gender value.");
   }
 
-  // Read current gender balance
-  const statsDoc = await db
-    .collection("global_gender_stats")
-    .doc("current")
-    .get();
-  const stats = statsDoc.data();
+  const userSnap = await db.collection("users").doc(uid).get();
+  const profile = userSnap.data() ?? {};
+  const schoolId = profile.schoolId as string | undefined;
+  const intents = (profile.activeIntents as string[] | undefined) ?? [];
+  const wantsDating = intents.includes("dating");
+
+  // Read this campus's Dating ratio. A national number would be meaningless —
+  // the person is going to meet people on their own campus.
+  const statsDoc = schoolId
+    ? await db.collection("global_gender_stats").doc(schoolId).get()
+    : null;
+  const stats = statsDoc?.data();
   const malePct = stats?.malePct ?? 0.5;
   const imbalanced = malePct > MALE_CAP_THRESHOLD;
 
@@ -90,8 +113,10 @@ export const applyGenderDefaults = onCall(async (request) => {
       gender === "female" || gender === "non_binary" ? 1.3 : 1.0,
   };
 
-  // Waitlist logic: if male and ratio is skewed, queue them
-  if (gender === "male" && imbalanced) {
+  // Waitlist logic: a man is queued only if he has actually selected Dating and
+  // his own campus's Dating ratio is skewed. Queuing someone who signed up to
+  // find a study partner would be both useless and insulting.
+  if (gender === "male" && wantsDating && imbalanced) {
     updates.accountStatus = "waitlisted";
     updates.waitlistEntryTime = admin.firestore.FieldValue.serverTimestamp();
     updates.activationDelayHours = WAITLIST_ACTIVATION_DELAY_HOURS;
@@ -100,6 +125,10 @@ export const applyGenderDefaults = onCall(async (request) => {
     await db.collection("waitlist").doc(uid).set({
       uid: uid,
       gender: gender,
+      schoolId: schoolId ?? null,
+      // Recorded so the queue can never be mistaken for a whole-app hold: the
+      // other four intents keep working while someone sits here.
+      scopedToDating: true,
       status: "queued",
       entryTime: admin.firestore.FieldValue.serverTimestamp(),
       estimatedActivation: admin.firestore.Timestamp.fromDate(
@@ -108,7 +137,9 @@ export const applyGenderDefaults = onCall(async (request) => {
       activatedAt: null,
     });
 
-    console.log(`[applyGenderDefaults] User ${uid} waitlisted (malePct=${malePct})`);
+    console.log(
+      `[applyGenderDefaults] ${uid} waitlisted for Dating at ${schoolId} (malePct=${malePct})`
+    );
   }
 
   await db.collection("users").doc(uid).update(updates);

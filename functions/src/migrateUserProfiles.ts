@@ -2,9 +2,14 @@
 // [x] No hardcoded secrets — uses Admin SDK only
 // [x] Runs as one-shot callable (admin-only) — not exposed to regular users
 // [x] Writes only default safety fields — never overwrites existing user data
+// [x] Backfills community state at its LEAST-PRIVILEGED value: no schoolId,
+//     enrollmentStatus 'unverified', studentIDStatus 'none'. Migration must never
+//     be the thing that hands an existing account a campus — those accounts go
+//     back through schoolGate.ts like everyone else.
+// [x] activeIntents is backfilled to Hangout + Study; never Dating
 // [x] Uses batch writes with 500-doc limit for Firestore safety
-// [x] Minimal data read — only fetches gender field via select()
-// [x] Idempotent — safe to re-run; skips users who already have accountStatus
+// [x] Minimal data read — only the fields the backfill needs, via select()
+// [x] Idempotent — safe to re-run; skips users who already have enrollmentStatus
 
 import * as admin from "firebase-admin";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
@@ -27,6 +32,12 @@ const BATCH_SIZE = 500; // Firestore batch write limit
  * - currentHourAlerts: {}
  * - intentVibes: []
  * - socialContextPreference: true
+ * - schoolId: null, enrollmentStatus: "unverified", studentIDStatus: "none"
+ * - activeIntents: ["hangout", "study"]
+ *
+ * Note what it deliberately does NOT do: grant anyone a community. Every
+ * pre-campus account lands at the school gate, which is the only correct answer —
+ * nothing in an old profile is evidence about which campus its owner belongs to.
  *
  * Call via: firebase functions:call migrateUserProfiles --data '{}'
  * Or from admin dashboard.
@@ -53,11 +64,13 @@ export const migrateUserProfiles = onCall(async (request) => {
   let totalSkipped = 0;
   let lastDoc: admin.firestore.QueryDocumentSnapshot | undefined;
 
-  // Process in batches to avoid memory issues
-  while (true) {
+  // Process in batches to avoid memory issues.
+  // `for (;;)` rather than `while (true)`: the latter trips no-constant-condition,
+  // and firebase.json runs lint as a predeploy step.
+  for (;;) {
     let query = db
       .collection("users")
-      .select("gender", "accountStatus") // Minimal data
+      .select("gender", "accountStatus", "enrollmentStatus", "verificationStatus") // Minimal data
       .limit(BATCH_SIZE);
 
     if (lastDoc) {
@@ -73,8 +86,11 @@ export const migrateUserProfiles = onCall(async (request) => {
     for (const doc of snapshot.docs) {
       const data = doc.data();
 
-      // Skip if already migrated (idempotency check)
-      if (data.accountStatus !== undefined) {
+      // Skip if already migrated (idempotency check). Keyed on enrollmentStatus
+      // rather than accountStatus, because the earlier migration already set
+      // accountStatus — re-running against that generation still needs to add
+      // the community fields.
+      if (data.enrollmentStatus !== undefined) {
         totalSkipped++;
         continue;
       }
@@ -96,6 +112,15 @@ export const migrateUserProfiles = onCall(async (request) => {
         verificationStatus: data.verificationStatus ?? "unverified",
         intentVibes: [],
         socialContextPreference: true,
+        // Community state, least-privileged. Not a guess, not a default campus.
+        schoolId: null,
+        schoolDisplayName: null,
+        enrollmentStatus: "unverified",
+        studentIDStatus: "none",
+        verifiedAge: null,
+        activeIntents: ["hangout", "study"],
+        datingCooldownUntil: null,
+        springBreakDestinationId: null,
       });
 
       batchCount++;
