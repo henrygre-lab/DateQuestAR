@@ -190,6 +190,13 @@ struct SignalCard: View {
     /// 0…1. Nil when no match record backs this profile yet.
     let vibeScore: Double?
 
+    /// The signal's school, e.g. "UCLA".
+    ///
+    /// Community identity, which DESIGN_SYSTEM.md §8 permits — and load-bearing
+    /// inside a Spring Break destination, where the pool is cross-school and the
+    /// badge is the only thing telling you this person is from Michigan.
+    var school: String?
+
     @Environment(\.dq) private var p
 
     private static let height: CGFloat = 168
@@ -204,12 +211,17 @@ struct SignalCard: View {
                 DQScrim.signal
 
                 VStack(alignment: .leading, spacing: 0) {
-                    HStack {
+                    HStack(spacing: 6) {
                         GlassChip(
                             symbol: "diamond.fill",
                             symbolColor: tier.dq.color(p),
                             text: tier.dq.name
                         )
+                        if let school, !school.isEmpty {
+                            GlassChip(symbol: "graduationcap.fill",
+                                      symbolColor: DQGlass.ink,
+                                      text: school)
+                        }
                         Spacer(minLength: 0)
                     }
                     .padding(10)
@@ -238,10 +250,15 @@ struct SignalCard: View {
                 .strokeBorder(p.line, lineWidth: 1)
         )
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(
-            vibeScore.map { "Nearby signal, \(tier.dq.name) tier, \(Int(($0 * 100).rounded())) vibe match" }
-            ?? "Nearby signal, \(tier.dq.name) tier"
-        )
+        .accessibilityLabel(accessibilityText)
+    }
+
+    private var accessibilityText: String {
+        var parts = ["Nearby signal"]
+        if let school, !school.isEmpty { parts.append(school) }
+        parts.append("\(tier.dq.name) tier")
+        if let vibeScore { parts.append("\(Int((vibeScore * 100).rounded())) vibe match") }
+        return parts.joined(separator: ", ")
     }
 }
 

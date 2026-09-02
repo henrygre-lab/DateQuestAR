@@ -1,8 +1,18 @@
 // MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets, API keys, or tokens — Firebase config via GoogleService-Info.plist
 // [x] Sign-in errors surface generic messages — no account-existence leakage
+// [x] App state is derived from server-issued fields only (schoolId,
+//     enrollmentStatus, studentIDStatus). A signed-in account with no school
+//     lands on .schoolGate; one without a verified student ID lands on
+//     .studentIDPending. Neither can be skipped from the client.
+// [x] The new profile is created at least-privileged defaults — no schoolId,
+//     .unverified, .none, .bronze — which is exactly what firestore.rules
+//     requires on create
+// [x] Custom claims are refreshed before routing, because firestore.rules reads
+//     claims rather than the profile document
 // [x] LocalAuthentication (Face ID / Touch ID) is a UI gate only; Firebase session is authoritative
 // [x] Google Sign-In token handled entirely by the GoogleSignIn SDK — never stored or logged by app
+// [x] Sign-out clears the Keychain-held phone number alongside the session
 // [x] Developer Bypass is #if DEBUG only — zero surface area in production builds
 
 import UIKit
@@ -15,11 +25,30 @@ import GoogleSignIn
 
 // MARK: - App State
 
+/// Where the app should be, derived entirely from server-issued state.
+///
+/// The order matters and is the product's gate order: you cannot reach profile
+/// setup without a school, and you cannot reach the app without a student ID.
 enum AppState: Equatable {
     case loading
     case unauthenticated
+
+    /// Signed in, but no school issued yet. Phone + allowlisted .edu magic link,
+    /// school OAuth, or enrollment proof.
+    case schoolGate
+
+    /// Enrollment proof submitted and awaiting review. Grants nothing meanwhile.
+    case enrollmentReview
+
+    /// School gate passed; student ID card photo + liveness still outstanding.
+    /// The community is visible, Quest Mode is not.
+    case studentIDPending
+
     case onboarding
+
+    /// Queued for **Dating** by the balance tools. Every other intent still works.
     case waitlisted
+
     case authenticated
 }
 
@@ -73,16 +102,24 @@ final class AuthViewModel: ObservableObject {
         do {
             if let existing = try await FirestoreService.shared.fetchUser(uid: firebaseUser.uid) {
                 self.currentUser = existing
-                self.appState = existing.isProfileComplete ? .authenticated : .onboarding
+
+                // firestore.rules reads custom claims, not the profile document.
+                // Refreshing here means the state we route to is the state the
+                // backend will actually honour.
+                await SchoolGateManager.shared.refreshClaims()
+
+                self.appState = Self.route(for: existing)
 
                 // Initialize XP system and record daily login on successful profile load
                 await XPManager.shared.loadCurrentUserGamification()
                 await XPManager.shared.recordDailyLogin()
             } else {
                 let newProfile = makeMinimalProfile(for: firebaseUser)
-                try await FirestoreService.shared.createOrUpdateUser(newProfile)
+                try await FirestoreService.shared.createUser(newProfile)
                 self.currentUser = newProfile
-                self.appState = .onboarding
+                // A brand-new account has no school, so it starts at the gate —
+                // never at onboarding.
+                self.appState = .schoolGate
             }
         } catch {
             if retryCount < 2 {
@@ -93,6 +130,30 @@ final class AuthViewModel: ObservableObject {
                 self.appState = .unauthenticated
             }
         }
+    }
+
+    /// Maps a profile to the screen it belongs on.
+    ///
+    /// Every branch reads a server-owned field. There is deliberately no
+    /// "close enough" case: an account that is missing a gate is sent back to
+    /// that gate rather than allowed through with reduced function, because the
+    /// backend would refuse its reads anyway and the user would see an empty app
+    /// with no explanation.
+    static func route(for profile: UserProfile) -> AppState {
+        guard profile.schoolId?.isEmpty == false else {
+            return profile.enrollmentStatus == .pending ? .enrollmentReview : .schoolGate
+        }
+
+        guard profile.enrollmentStatus.grantsCommunityAccess else {
+            // Alumni and revoked accounts have lost their community. Sending
+            // them to the gate is honest: re-verifying is the only way back.
+            return profile.enrollmentStatus == .pending ? .enrollmentReview : .schoolGate
+        }
+
+        guard profile.studentIDStatus.isIDVerified else { return .studentIDPending }
+        guard profile.isProfileComplete else { return .onboarding }
+        guard profile.accountStatus != .waitlisted else { return .waitlisted }
+        return .authenticated
     }
 
     /// Creates a minimal profile with safe defaults for new users.
@@ -110,7 +171,6 @@ final class AuthViewModel: ObservableObject {
             preferences: MatchPreferences(
                 ageRange: 18...99,
                 maxDistanceMiles: 0.25,
-                relationshipTypes: [],
                 genderPreferences: [],
                 interests: [],
                 dealbreakers: [],
@@ -128,8 +188,32 @@ final class AuthViewModel: ObservableObject {
             isProfileComplete: false,
             trustScore: 0.5,
             createdAt: Date(),
-            lastActive: Date()
+            lastActive: Date(),
+            // Least-privileged defaults, spelled out rather than inherited so
+            // it is obvious at a glance that a new account grants nothing.
+            // firestore.rules requires exactly these values on create.
+            schoolId: nil,
+            schoolDisplayName: nil,
+            enrollmentStatus: .unverified,
+            studentIDStatus: .none,
+            // Hangout + Study. Dating is opt-in and needs the face match.
+            activeIntents: Intent.defaults
         )
+    }
+
+    /// Re-reads the profile and re-routes.
+    ///
+    /// Called after a Cloud Function has changed something the client cannot
+    /// write — a school issued, a student ID verified. The claim refresh matters
+    /// as much as the read: `firestore.rules` decides on claims, so routing on a
+    /// fresh profile with a stale token would land the user on a screen whose
+    /// queries then fail.
+    func reloadProfile() async {
+        guard let uid = Auth.auth().currentUser?.uid else { return }
+        await SchoolGateManager.shared.refreshClaims()
+        guard let profile = try? await FirestoreService.shared.fetchUser(uid: uid) else { return }
+        currentUser = profile
+        appState = Self.route(for: profile)
     }
 
     // MARK: - Sign Up
@@ -203,6 +287,9 @@ final class AuthViewModel: ObservableObject {
         #endif
         do {
             try Auth.auth().signOut()
+            // The phone number lives in Keychain, not UserDefaults, and it
+            // belongs to a session that no longer exists.
+            SchoolGateManager.shared.clearLocalIdentity()
             appState = .unauthenticated
             currentUser = nil
         } catch {

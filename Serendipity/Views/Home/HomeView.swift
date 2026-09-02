@@ -2,9 +2,16 @@
 // [x] No hardcoded secrets, API keys, or tokens
 // [x] BalanceEnforcer reads from Firestore (read-only on client)
 // [x] Gender ratio badge displays aggregate data only — no PII
-// [x] All match visibility gates enforced via BalanceEnforcer.shouldShowMatch
+// [x] All match visibility gates enforced via MatchManager (community gate first,
+//     then BalanceEnforcer for Dating-gated pairs only)
 // [x] No sensitive user data exposed in UI — only display name and aggregate stats
 // [x] Nearby signals stay blurred and unnamed — identity is gated behind an encounter
+// [x] The only place name rendered is the school's own display name, and — inside a
+//     live window — the destination's server-supplied label. No neighbourhood,
+//     venue, building or geohash appears anywhere (DESIGN_SYSTEM.md §8).
+// [x] Off campus the card says so and Quest Mode cannot be started from here
+// [x] The gender-ratio chip is shown only when the user is Dating-gated, because
+//     it describes a mechanism that does not apply to anyone else
 
 import SwiftUI
 
@@ -121,7 +128,10 @@ struct HomeView: View {
 
             Spacer(minLength: 0)
 
-            if balanceEnforcer.isStatsAvailable { ratioChip }
+            // The ratio drives Dating throttling and nothing else. Showing it to
+            // someone on Study only would be describing a mechanism that has no
+            // bearing on their experience.
+            if balanceEnforcer.isStatsAvailable, isDatingGated { ratioChip }
             avatarMenu
         }
         .accessibilityElement(children: .contain)
@@ -162,20 +172,60 @@ struct HomeView: View {
 
     private var questCard: some View {
         let active = matchManager.isQuestModeActive
+        let scope = locationService.communityScope
         return QuestCard(
-            isActive: active,
+            isActive: active && scope.allowsQuestMode,
             // §5's QuestCard assumes a quest content model (title, description,
             // `n / m quests`, an end time). This app has none — Quest Mode is a
             // scanning Bool. Copy describes what actually happens instead.
-            title: active ? "Scanning for someone nearby" : "Start scanning nearby",
-            detail: "An encounter opens when you're within \(rangeText) of a compatible match.",
+            title: questTitle(active: active, scope: scope),
+            detail: questDetail(scope: scope),
             chips: questChips,
             onToggle: toggleQuestMode
         )
+        .disabled(!scope.allowsQuestMode)
+    }
+
+    /// The card title carries the community, because that is the single most
+    /// important fact about who you are about to see.
+    ///
+    /// "Quest Mode · UCLA" is community identity, which DESIGN_SYSTEM.md §8
+    /// permits. A destination label like "Cancún · Spring Break" comes from the
+    /// backend document, not from anything the device worked out about where the
+    /// user is standing.
+    private func questTitle(active: Bool, scope: CommunityScope) -> String {
+        switch scope {
+        case .none:
+            return "Paused — you're off campus"
+        case .campus:
+            let school = authViewModel.currentUser?.schoolDisplayName
+            let suffix = (school?.isEmpty == false) ? " · \(school!)" : ""
+            return (active ? "Scanning\(suffix)" : "Start scanning\(suffix)")
+        case .springBreak(_, let label):
+            return active ? "Scanning · \(label)" : "Start scanning · \(label)"
+        }
+    }
+
+    private func questDetail(scope: CommunityScope) -> String {
+        switch scope {
+        case .none:
+            return "Quest Mode runs on campus. It'll pick back up when you're there."
+        case .campus:
+            return "You'll only see people from your school. An encounter opens "
+                 + "when you're within \(rangeText) of someone compatible."
+        case .springBreak:
+            return "Here you'll see verified students from any school at this "
+                 + "destination — not everyone on the beach."
+        }
     }
 
     private var questChips: [String] {
+        let scope = locationService.communityScope
+        guard scope.allowsQuestMode else { return ["Off campus"] }
+
         var chips = ["Within \(rangeText)"]
+        if scope.isSpringBreak { chips.append("Spring Break") }
+        if locationService.prefersSquadRadar { chips.append("Squad Radar") }
         if matchManager.isQuestModeActive {
             chips.append("\(matchManager.nearbyUsers.count) nearby")
         }
@@ -183,14 +233,23 @@ struct HomeView: View {
     }
 
     private func toggleQuestMode(_ active: Bool) {
+        // Off campus there is no pool to scan, so there is nothing to turn on.
+        // The card is already disabled; this is the second guard.
+        guard locationService.communityScope.allowsQuestMode else { return }
+
         if active, let user = authViewModel.currentUser {
-            // Phase 2 safety wiring — centralized gender-balance + alert caps
-            // (enableQuestMode internally calls AlertCapManager.updateUserCaps
-            //  and BalanceEnforcer gating before any proximity event fires)
+            // Gates run inside enableQuestMode: student ID verification, then the
+            // campus geofence, then the caps and balance layers for Dating pairs.
             matchManager.enableQuestMode(for: user)
         } else {
             matchManager.disableQuestMode()
         }
+    }
+
+    /// Whether Dating's machinery applies to this user right now — Dating on, or
+    /// inside the server-written 24h cooldown that follows switching it off.
+    private var isDatingGated: Bool {
+        authViewModel.currentUser?.isDatingGated() ?? false
     }
 
     // MARK: - Signals Nearby
@@ -198,7 +257,15 @@ struct HomeView: View {
     @ViewBuilder
     private var signalsSection: some View {
         let signals = Array(matchManager.nearbyUsers.prefix(2))
-        if !signals.isEmpty {
+        if !locationService.communityScope.allowsQuestMode {
+            DQEmptyState(
+                symbol: "pause.circle",
+                title: "Quest Mode is paused",
+                message: "You're outside your campus. Nothing is scanning, and "
+                       + "nobody can see you."
+            )
+            .padding(.top, DQSpace.block)
+        } else if !signals.isEmpty {
             VStack(alignment: .leading, spacing: 11) {
                 HStack(alignment: .firstTextBaseline) {
                     Text("Signals nearby")
@@ -225,7 +292,8 @@ struct HomeView: View {
                             SignalCard(
                                 name: user.displayName,
                                 tier: user.trustLevel,
-                                vibeScore: vibeScore(for: user)
+                                vibeScore: vibeScore(for: user),
+                                school: user.schoolDisplayName
                             )
                         }
                         .buttonStyle(.plain)

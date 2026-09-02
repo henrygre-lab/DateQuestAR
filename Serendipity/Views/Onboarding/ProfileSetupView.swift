@@ -1,8 +1,18 @@
 // MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets, API keys, or tokens
+// [x] This screen is only reachable after the school gate and the student ID
+//     check — RootView routes on server-issued state, so setup cannot be used to
+//     get into a community
+// [x] The profile write is field-whitelisted (saveProfileEdits) — schoolId,
+//     enrollmentStatus, studentIDStatus, verifiedAge, trustLevel, accountStatus
+//     and activeIntents are all server-owned and are never sent from here
+// [x] Intents are written through the setActiveIntents Cloud Function, which is
+//     what enforces the Dating gate and starts the 24h Dating-off cooldown
 // [x] Gender selection calls server-side applyGenderDefaults Cloud Function
-// [x] Waitlist decision made server-side — client only reads the result
-// [x] Photo uploads scoped to authenticated user's storage path
+// [x] Waitlist decision made server-side — client only reads the result, and the
+//     waitlist is Dating-only
+// [x] Photo uploads scoped to authenticated user's storage path; no verification
+//     artefact ever goes to that path
 // [x] Input validation on all fields before Firestore write
 // [x] No raw coordinates — geohash only via LocationService
 // [x] Server timestamps used for profile creation
@@ -18,14 +28,14 @@ struct ProfileSetupView: View {
     @EnvironmentObject var balanceEnforcer: BalanceEnforcer
     @Environment(\.dq) private var p
     @StateObject private var verifier = SafetyVerifier()
-    @State private var step: SetupStep = .verification
+    @State private var step: SetupStep = .studentID
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var displayName = ""
     @State private var bio = ""
     @State private var age = 25
     @State private var selectedGender: Gender = .preferNotToSay
     @State private var selectedInterests: Set<String> = []
-    @State private var selectedRelationshipTypes: Set<MatchPreferences.RelationshipType> = []
+    @State private var selectedIntents: Set<Intent> = Set(Intent.defaults)
     @State private var selectedVibes: Set<String> = []
     @State private var prefMinAge = 21
     @State private var prefMaxAge = 35
@@ -36,14 +46,14 @@ struct ProfileSetupView: View {
     @State private var showErrorAlert = false
 
     enum SetupStep: Int, CaseIterable {
-        case verification, photos, bio, preferences, vibes, privacy
+        case studentID, photos, bio, preferences, vibes, privacy
 
         var title: String {
             switch self {
-            case .verification:  return "Verify Your Identity"
+            case .studentID:     return "Verify You're a Student"
             case .photos:        return "Add Your Photos"
             case .bio:           return "About You"
-            case .preferences:   return "Your Preferences"
+            case .preferences:   return "What You're Here For"
             case .vibes:         return "Your Vibe"
             case .privacy:       return "Privacy & Safety"
             }
@@ -97,8 +107,10 @@ struct ProfileSetupView: View {
     @ViewBuilder
     private var stepContent: some View {
         switch step {
-        case .verification:
-            VerificationStepView(verifier: verifier)
+        case .studentID:
+            StudentIDStepView(verifier: verifier,
+                              profileAge: age,
+                              onVerified: { advanceStep() })
         case .photos:
             PhotosStepView(selectedPhotos: $selectedPhotos)
         case .bio:
@@ -106,9 +118,12 @@ struct ProfileSetupView: View {
         case .preferences:
             PreferencesStepView(
                 selectedInterests: $selectedInterests,
-                selectedRelationshipTypes: $selectedRelationshipTypes,
+                selectedIntents: $selectedIntents,
                 prefMinAge: $prefMinAge,
-                prefMaxAge: $prefMaxAge
+                prefMaxAge: $prefMaxAge,
+                // Read from the profile, which reads from the server. The chip is
+                // disabled rather than hidden so the requirement is visible.
+                canUseDating: authViewModel.currentUser?.canUseDatingIntent ?? false
             )
         case .vibes:
             VibeStepView(selectedVibes: $selectedVibes)
@@ -121,9 +136,9 @@ struct ProfileSetupView: View {
 
     private var navigationButtons: some View {
         HStack(spacing: DQSpace.tight) {
-            if step != .verification {
+            if step != .studentID {
                 Button("Back") {
-                    withAnimation { step = SetupStep(rawValue: step.rawValue - 1) ?? .verification }
+                    withAnimation { step = SetupStep(rawValue: step.rawValue - 1) ?? .studentID }
                 }
                 .buttonStyle(.dqGhost)
             }
@@ -160,13 +175,26 @@ struct ProfileSetupView: View {
         guard selectedPhotos.count >= 2 else {
             return "Please add at least 2 photos."
         }
-        guard !selectedRelationshipTypes.isEmpty else {
-            return "Please select at least one relationship type."
+        guard !selectedIntents.isEmpty else {
+            return "Pick at least one thing you're here for."
         }
         guard prefMinAge <= prefMaxAge else {
             return "Minimum age preference cannot exceed maximum."
         }
         return nil
+    }
+
+    // MARK: - Intents (server-owned)
+
+    /// Writes the chosen intents through `setActiveIntents`.
+    ///
+    /// The function re-checks the Dating gate against server-written fields, so a
+    /// tampered client that ticks Dating without the face match is refused here
+    /// rather than silently accepted.
+    private func setActiveIntents(_ intents: [Intent]) async throws {
+        _ = try await Functions.functions()
+            .httpsCallable("setActiveIntents")
+            .call(["intents": intents.map(\.rawValue)])
     }
 
     // MARK: - Photo Upload (atomic with best-effort cleanup)
@@ -232,13 +260,15 @@ struct ProfileSetupView: View {
                 }
             }()
 
-            let trustLevel = verifier.achievedTrustLevel
-            let verifiedAge = verifier.idValidationResult?.extractedAge
+            // trustLevel and verifiedAge are server-owned — studentIdVerification.ts
+            // sets both, and firestore.rules rejects a client write. What the
+            // client holds is whatever the server last told it.
+            let trustLevel = authViewModel.currentUser?.trustLevel ?? .bronze
+            let verifiedAge = authViewModel.currentUser?.verifiedAge
 
             let preferences = MatchPreferences(
                 ageRange: prefMinAge...prefMaxAge,
                 maxDistanceMiles: 0.25,
-                relationshipTypes: Array(selectedRelationshipTypes),
                 genderPreferences: [],
                 interests: Array(selectedInterests),
                 dealbreakers: [],
@@ -278,8 +308,14 @@ struct ProfileSetupView: View {
             profile.gender = selectedGender
             profile.intentVibes = Array(selectedVibes)
 
-            // Persist to Firestore
-            try await FirestoreService.shared.createOrUpdateUser(profile)
+            // Field-whitelisted write. Everything that decides access is left
+            // out, because it belongs to the server and the rules would reject it.
+            try await FirestoreService.shared.saveProfileEdits(profile)
+
+            // Intents go through the Cloud Function, not the profile write. That
+            // is the only path that can enforce the Dating gate and set the
+            // Dating-off cooldown.
+            try await setActiveIntents(Array(selectedIntents))
 
             // Call Cloud Function to apply gender-specific defaults (waitlist, caps, boost)
             let genderResult = try await applyGenderDefaults(gender: selectedGender)

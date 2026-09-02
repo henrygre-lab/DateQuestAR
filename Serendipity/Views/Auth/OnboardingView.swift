@@ -1,3 +1,14 @@
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
+// [x] No hardcoded secrets, API keys, or tokens
+// [x] Sign-in errors surface generic messages — no account-existence leakage
+//     (the copy is produced by AuthViewModel, which owns that rule)
+// [x] The Developer Bypass is #if DEBUG only — zero surface area in release builds.
+//     It constructs a mock UserProfile carrying schoolId, enrollmentStatus and
+//     studentIDStatus, which in production only Cloud Functions can issue; that is
+//     precisely why it must never compile into a shipping build.
+// [x] The bypass persona shares the demo school with DemoProximityProvider, so the
+//     walkthrough exercises the real same-school gate rather than routing around it
+// [x] No PII logged
 import SwiftUI
 
 struct OnboardingView: View {
@@ -118,7 +129,6 @@ struct OnboardingView: View {
                     preferences: MatchPreferences(
                         ageRange: 21...35,
                         maxDistanceMiles: 0.25,
-                        relationshipTypes: [.longTerm],
                         genderPreferences: [],
                         interests: ["coding", "coffee", "hiking"],
                         dealbreakers: [],
@@ -138,6 +148,14 @@ struct OnboardingView: View {
                     trustScore: 0.9,
                     createdAt: Date(),
                     lastActive: Date(),
+                    // The bypass persona is issued the same demo community as the
+                    // demo candidates, so the walkthrough exercises the real
+                    // same-school gate instead of routing around it.
+                    schoolId: DemoProximityProvider.demoSchoolId,
+                    schoolDisplayName: DemoProximityProvider.demoSchoolName,
+                    enrollmentStatus: .enrolled,
+                    studentIDStatus: .faceMatched,
+                    activeIntents: Intent.defaults,
                     gender: .male,
                     accountStatus: .active,
                     intentVibes: ["adventurous", "genuine", "spontaneous"],

@@ -422,11 +422,16 @@ public enum DQTrustTier: Int, CaseIterable, Sendable {
         case .platinum: "Platinum"
         }
     }
+    /// What each tier actually requires, in the app as built.
+    ///
+    /// The ladder is the campus gate, not a generic identity ladder: Bronze is
+    /// the school gate, Silver the student ID card photo + liveness, Gold the
+    /// ID <-> liveness face match that opens the Dating intent and NameDrop.
     public var requirement: String {
         switch self {
-        case .bronze: "Email verified"
-        case .silver: "Liveness check passed"
-        case .gold: "Government ID face match"
+        case .bronze: "School email verified"
+        case .silver: "Student ID and liveness check passed"
+        case .gold: "Student ID matches your selfie"
         case .platinum: "Average post-meet rating ≥ 4.0"
         }
     }

@@ -3,6 +3,12 @@
 // [x] Squad radar mode evaluated from explicit parameters — no mutable shared state
 // [x] BalanceEnforcer.needsFemaleBoost is read-only on client (written by Cloud Function)
 // [x] No PII displayed — only compatibility scores, proximity, and aggregate balance state
+// [x] The radar shows only what MatchManager surfaced, which is already
+//     community-gated: same school, or the same live Spring Break destination
+// [x] Off campus the scope is .none, nearbyUsers is empty, and this screen says so
+// [x] Squad Radar is forced on after dusk inside a Spring Break destination
+// [x] No place name rendered — the destination's own server-supplied label is the
+//     only exception, and no neighbourhood, venue or geohash appears
 // [x] AR session does not transmit location or camera data off-device
 
 import SwiftUI
@@ -54,7 +60,9 @@ struct RadarView: View {
                     .font(.caption)
                     .monospaced()
 
-                Text("\(matchManager.nearbyUsers.count) nearby matches")
+                Text(locationService.communityScope.allowsQuestMode
+                     ? "\(matchManager.nearbyUsers.count) nearby matches"
+                     : "Paused — off campus")
                     .font(.headline)
 
                 if !matchManager.nearbyUsers.isEmpty {
@@ -89,10 +97,17 @@ struct RadarView: View {
             blipPulse = true
             // Default squad radar based on user preference and nearby density
             if let user = authViewModel.currentUser {
-                squadRadarOn = user.socialContextPreference || matchManager.activeMatches.count >= 10
+                // After dusk at a Spring Break destination, Squad Radar is the
+                // default rather than a preference — people arrive in groups
+                // there and should stay in them.
+                let forced = locationService.prefersSquadRadar
+                squadRadarOn = forced
+                    || user.socialContextPreference
+                    || matchManager.activeMatches.count >= 10
                 ProximityService.shared.evaluateSquadRadarMode(
                     prefersSocialContext: user.socialContextPreference,
-                    nearbyCount: matchManager.activeMatches.count
+                    nearbyCount: matchManager.activeMatches.count,
+                    forceSquadRadar: forced
                 )
             }
         }
@@ -164,7 +179,10 @@ struct RadarView: View {
                     squadRadarOn.toggle()
                     ProximityService.shared.evaluateSquadRadarMode(
                         prefersSocialContext: squadRadarOn,
-                        nearbyCount: matchManager.activeMatches.count
+                        nearbyCount: matchManager.activeMatches.count,
+                        // The dusk rule still applies: the toggle cannot switch
+                        // Squad Radar off inside a live destination after dark.
+                        forceSquadRadar: locationService.prefersSquadRadar
                     )
                 } label: {
                     HStack(spacing: DQ.Spacing.xxs) {
