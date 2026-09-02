@@ -6,6 +6,9 @@
 // [x] The radar shows only what MatchManager surfaced, which is already
 //     community-gated: same school, or the same live Spring Break destination
 // [x] Off campus the scope is .none, nearbyUsers is empty, and this screen says so
+// [x] A lapsed Spring Break claim is surfaced here too. The radar is where the
+//     cross-school pool is most visible, so it is where a silent narrowing would
+//     be most misleading.
 // [x] Squad Radar is forced on after dusk inside a Spring Break destination
 // [x] No place name rendered — the destination's own server-supplied label is the
 //     only exception, and no neighbourhood, venue or geohash appears
@@ -30,6 +33,37 @@ struct RadarView: View {
     @State private var blipPulse = false
     @State private var squadRadarOn = false
 
+    /// One line describing why the radar is showing what it is showing.
+    private var voiceOverStatusLine: String {
+        if let paused = locationService.springBreakStatus.pausedMessage { return paused }
+        guard locationService.communityScope.allowsQuestMode else { return "Paused — off campus" }
+        return "\(matchManager.nearbyUsers.count) nearby matches"
+    }
+
+    /// Spring Break pause banner for the HUD.
+    ///
+    /// Sits under the top bar rather than over the ring: the ring is the live
+    /// readout, and covering it to explain that the pool narrowed would hide the
+    /// thing the explanation is about.
+    @ViewBuilder
+    private var springBreakPausedBanner: some View {
+        if let message = locationService.springBreakStatus.pausedMessage {
+            Text(message)
+                .font(DQ.Typography.caption())
+                .foregroundStyle(DQ.Colors.textPrimary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, DQ.Spacing.md)
+                .padding(.vertical, DQ.Spacing.sm)
+                .background(
+                    RoundedRectangle(cornerRadius: DQ.Radii.medium)
+                        .fill(DQ.Colors.surfaceCard.opacity(0.92))
+                )
+                .padding(.horizontal, DQ.Spacing.xl)
+                .accessibilityLabel(message)
+        }
+    }
+
     var body: some View {
         ZStack {
             // AR Camera feed or VoiceOver fallback
@@ -44,6 +78,7 @@ struct RadarView: View {
             // HUD overlay
             VStack {
                 topBar
+                springBreakPausedBanner
                 Spacer()
                 radarRing
                 Spacer()
@@ -60,9 +95,7 @@ struct RadarView: View {
                     .font(.caption)
                     .monospaced()
 
-                Text(locationService.communityScope.allowsQuestMode
-                     ? "\(matchManager.nearbyUsers.count) nearby matches"
-                     : "Paused — off campus")
+                Text(voiceOverStatusLine)
                     .font(.headline)
 
                 if !matchManager.nearbyUsers.isEmpty {

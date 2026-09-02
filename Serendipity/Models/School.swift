@@ -11,6 +11,9 @@
 //     neighbourhood, venue, landmark, building or geohash is ever shown
 // [x] Fail-closed pairing — CommunityGate returns false for .none scope, for any
 //     unverified party, and for any cross-school pair outside a live SB window
+// [x] SpringBreakStatus is presentation state only. It never widens a pool: when
+//     it is .paused the scope has already fallen back to campus or .none, and
+//     CommunityGate does not read it.
 
 import Foundation
 import FirebaseFirestore
@@ -137,6 +140,70 @@ enum CommunityScope: Equatable {
     var isSpringBreak: Bool {
         if case .springBreak = self { return true }
         return false
+    }
+}
+
+// MARK: - Spring Break Status
+
+/// Whether the cross-school Spring Break pool is open for this device, and if
+/// not, why.
+///
+/// Deliberately separate from `CommunityScope`. The scope answers "who may I
+/// see", and `CommunityGate` reads it; this answers "what should the screen tell
+/// me". Folding a paused state into the scope would either add a case
+/// `CommunityGate` has to interpret — widening the surface of the same-school
+/// rule — or reduce to `.none`, which is the silent fallback this type exists to
+/// prevent.
+enum SpringBreakStatus: Equatable {
+
+    /// Not at a destination. The ordinary case, for almost everyone, almost always.
+    case inactive
+
+    /// Server-confirmed presence at a live destination. The cross-school pool is open.
+    case active(destinationId: String, displayLabel: String)
+
+    /// Presence has lapsed. The pool is closed and the user is back to
+    /// same-school, and the UI says so rather than letting them assume otherwise.
+    case paused(displayLabel: String, reason: PauseReason)
+
+    enum PauseReason: Equatable {
+        /// Walked out of the destination fence.
+        case leftFence
+        /// Quest Mode was switched off, so presence stopped being refreshed.
+        case questModeOff
+        /// The backend declined or could not be reached on a refresh.
+        case refreshFailed
+        /// The destination's server-dated window closed.
+        case windowEnded
+    }
+
+    var isActive: Bool {
+        if case .active = self { return true }
+        return false
+    }
+
+    /// Copy for the Home and Radar surfaces.
+    ///
+    /// `windowEnded` gets its own line: telling someone to keep Quest Mode on at
+    /// the destination would be false once the window has closed, and there is
+    /// nothing they can do about it.
+    var pausedMessage: String? {
+        guard case .paused(_, let reason) = self else { return nil }
+        switch reason {
+        case .windowEnded:
+            return "Spring Break has ended — you're back to your own school only."
+        case .leftFence, .questModeOff, .refreshFailed:
+            return "Spring Break paused — keep Quest on at the destination to stay in the multi-school pool."
+        }
+    }
+
+    /// The destination this status refers to, for a badge or a title.
+    var displayLabel: String? {
+        switch self {
+        case .inactive:                          return nil
+        case .active(_, let label):              return label
+        case .paused(let label, _):              return label
+        }
     }
 }
 

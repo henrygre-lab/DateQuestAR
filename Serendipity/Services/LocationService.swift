@@ -12,6 +12,16 @@
 //     (confirmDestinationPresence) — detecting the fence locally is not enough
 // [x] Leaving a destination clears presence server-side, so no cross-school radar
 //     survives the trip home
+// [x] The sbDest claim is short-lived and is re-confirmed every 15 minutes while
+//     Quest Mode is on and the device is still inside the destination fence.
+//     Each refresh is the same server round-trip that issued the claim — the
+//     backend re-checks the fence and the dated window, so a refresh cannot
+//     extend presence the user no longer has.
+// [x] The cross-school pool never lapses silently. If a refresh fails, the window
+//     closes, the user leaves the fence, or Quest Mode is switched off, presence
+//     is released server-side and springBreakStatus becomes .paused, which the UI
+//     surfaces. Falling back to same-school without saying so would leave someone
+//     believing they were still in the multi-school pool.
 // [x] No place name is derived or published here — the scope carries a schoolId or
 //     the destination's own server-supplied label, never a neighbourhood or venue
 // [x] No PII logged — region identifiers and scope transitions only
@@ -56,9 +66,29 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
     /// Live-window destinations, from `spring_break_destinations`.
     private var springBreakDestinations: [SpringBreakDestination] = []
 
+    /// Whether the cross-school Spring Break pool is currently open, and if not,
+    /// why. Published separately from `communityScope` on purpose: the scope
+    /// decides who you can see, and this decides what the UI tells you about it.
+    /// Collapsing them would mean either a fourth scope case that
+    /// `CommunityGate` would have to interpret, or a silent fallback.
+    @Published private(set) var springBreakStatus: SpringBreakStatus = .inactive
+
     /// Destination whose fence we are currently inside and the server has
     /// confirmed. Nil unless both are true.
     private var confirmedDestination: SpringBreakDestination?
+
+    /// Server-confirmed presence is re-checked on this cadence, comfortably
+    /// inside the backend's 45-minute claim TTL so a slow round-trip or one
+    /// missed tick does not lapse the pool.
+    private static let destinationRefreshSeconds: TimeInterval = 15 * 60
+
+    private var destinationRefreshTask: Task<Void, Never>?
+
+    /// Set when Spring Break presence is paused, to stop `reevaluateScope` from
+    /// immediately re-claiming the same fence and looping. Cleared when the user
+    /// actually leaves the destination region, or when Quest Mode restarts —
+    /// both of which are real signals that a retry is worth making.
+    private var suppressDestinationClaims = false
 
     private static let campusRegionIdentifier = "serendipity.campus"
     private static let destinationRegionPrefix = "serendipity.destination."
@@ -106,6 +136,12 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
         locationManager.showsBackgroundLocationIndicator = true
         locationManager.startUpdatingLocation()
         locationManager.startMonitoringSignificantLocationChanges()
+
+        // Quest Mode coming back on is a real signal that a retry is worth
+        // making, so a previous pause stops suppressing claims here.
+        suppressDestinationClaims = false
+        reevaluateScope()
+
         Log.location.debug("Quest scanning started.")
     }
 
@@ -113,6 +149,16 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
         isScanning = false
         locationManager.stopUpdatingLocation()
         stopHaptics()
+
+        // Presence is only meaningful while scanning. Releasing it here rather
+        // than letting the claim age out means the cross-school pool closes when
+        // the user stops looking, not 45 minutes later.
+        if confirmedDestination != nil {
+            Task { @MainActor in await pauseSpringBreak(.questModeOff) }
+        } else {
+            stopDestinationRefresh()
+        }
+
         Log.location.debug("Quest scanning stopped.")
     }
 
@@ -173,6 +219,14 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
     func configureSpringBreakDestinations(_ destinations: [SpringBreakDestination]) {
         springBreakDestinations = destinations.filter { $0.isLive() }
 
+        // A destination that has dropped out of its window while we held
+        // presence at it is a window end, not a fence exit — and it gets
+        // different copy, because there is nothing the user can do about it.
+        if let held = confirmedDestination, !held.isLive() {
+            Task { @MainActor in await pauseSpringBreak(.windowEnded) }
+            return
+        }
+
         locationManager.monitoredRegions
             .filter { $0.identifier.hasPrefix(Self.destinationRegionPrefix) }
             .forEach { locationManager.stopMonitoring(for: $0) }
@@ -206,7 +260,15 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
 
         if let campus, containsLocation(location, geohash: campus.geofence.centerGeohash,
                                         radius: campus.geofence.radiusMeters) {
-            if confirmedDestination != nil { Task { await releaseDestination() } }
+            if confirmedDestination != nil {
+                Task { @MainActor in await pauseSpringBreak(.leftFence) }
+                return
+            }
+            // Home campus is not a paused state — it is the normal one. Clearing
+            // the status here stops a stale "Spring Break paused" banner
+            // following the user back to their own school.
+            springBreakStatus = .inactive
+            suppressDestinationClaims = false
             setScope(.campus(schoolId: campus.schoolId))
             return
         }
@@ -216,11 +278,21 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
                                             geohash: $0.centerGeohash,
                                             radius: $0.radiusMeters)
         }) {
-            Task { await claimDestination(destination) }
+            // A pause suppresses re-claiming until the user actually leaves the
+            // region or restarts Quest Mode; otherwise every location update
+            // would retry against a backend that just said no.
+            if suppressDestinationClaims {
+                setScope(.none)
+                return
+            }
+            Task { @MainActor in await claimDestination(destination) }
             return
         }
 
-        if confirmedDestination != nil { Task { await releaseDestination() } }
+        if confirmedDestination != nil {
+            Task { @MainActor in await pauseSpringBreak(.leftFence) }
+            return
+        }
         setScope(.none)
     }
 
@@ -249,22 +321,130 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
             .confirmDestinationPresence(destinationId: id, geohash: geohash)
 
         guard let label else {
-            // Server said no. Stay paused rather than falling back to campus —
-            // the user is demonstrably not on campus either.
-            confirmedDestination = nil
-            setScope(.none)
+            // Server said no. Pause explicitly rather than dropping to .none in
+            // silence — the user is standing at the destination and would
+            // otherwise have no way to tell the pool had closed.
+            confirmedDestination = destination
+            await pauseSpringBreak(.refreshFailed)
             return
         }
 
         confirmedDestination = destination
+        springBreakStatus = .active(destinationId: id, displayLabel: label)
         setScope(.springBreak(destinationId: id, displayLabel: label))
+        startDestinationRefresh()
     }
 
     /// Drops destination presence on the server and locally.
     @MainActor
     private func releaseDestination() async {
         confirmedDestination = nil
+        stopDestinationRefresh()
         await SchoolGateManager.shared.clearDestinationPresence()
+    }
+
+    // MARK: - Presence Refresh
+
+    /// Re-confirms `sbDest` every 15 minutes while presence is held.
+    ///
+    /// The claim the backend issues is short-lived by design, so that a user who
+    /// flies home cannot keep reading a cross-school pool. That makes an
+    /// unrefreshed claim a silent expiry — the pool would simply stop returning
+    /// other schools with nothing on screen to explain it. This loop is what
+    /// turns that into either a live claim or a visible paused state.
+    private func startDestinationRefresh() {
+        stopDestinationRefresh()
+        destinationRefreshTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(Self.destinationRefreshSeconds * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+                await self?.refreshDestinationPresence()
+            }
+        }
+    }
+
+    private func stopDestinationRefresh() {
+        destinationRefreshTask?.cancel()
+        destinationRefreshTask = nil
+    }
+
+    /// One refresh tick.
+    ///
+    /// Every precondition is re-checked locally before the round-trip, and then
+    /// again by the backend, which re-decodes the geohash against the
+    /// destination's own centre, radius and dated window. A refresh cannot
+    /// extend presence the user no longer has.
+    @MainActor
+    private func refreshDestinationPresence() async {
+        guard let destination = confirmedDestination else {
+            stopDestinationRefresh()
+            return
+        }
+
+        guard isScanning else {
+            await pauseSpringBreak(.questModeOff)
+            return
+        }
+
+        guard destination.isLive() else {
+            await pauseSpringBreak(.windowEnded)
+            return
+        }
+
+        guard let location = currentLocation,
+              containsLocation(location,
+                               geohash: destination.centerGeohash,
+                               radius: destination.radiusMeters) else {
+            await pauseSpringBreak(.leftFence)
+            return
+        }
+
+        guard let id = destination.id, let geohash = currentGeohash else {
+            await pauseSpringBreak(.refreshFailed)
+            return
+        }
+
+        guard let label = await SchoolGateManager.shared
+            .confirmDestinationPresence(destinationId: id, geohash: geohash) else {
+            await pauseSpringBreak(.refreshFailed)
+            return
+        }
+
+        springBreakStatus = .active(destinationId: id, displayLabel: label)
+        setScope(.springBreak(destinationId: id, displayLabel: label))
+        Log.location.debug("Destination presence refreshed")
+    }
+
+    /// Closes the cross-school pool and says so.
+    ///
+    /// Order matters: presence is released on the server first, so the claim and
+    /// the profile flag are gone before the scope narrows. Otherwise a crash in
+    /// between would leave a live claim with no local record of it.
+    @MainActor
+    private func pauseSpringBreak(_ reason: SpringBreakStatus.PauseReason) async {
+        let label = confirmedDestination.map(\.displayLabel)
+            ?? springBreakStatus.displayLabel
+            ?? "Spring Break"
+
+        await releaseDestination()
+
+        // Stops reevaluateScope re-claiming the same fence on the next location
+        // update, which would loop against a backend that just declined.
+        suppressDestinationClaims = true
+        springBreakStatus = .paused(displayLabel: label, reason: reason)
+
+        // Back to same-school: campus if they are on it, otherwise paused.
+        // No leftover cross-school radar either way.
+        if let campus, let location = currentLocation,
+           containsLocation(location,
+                            geohash: campus.geofence.centerGeohash,
+                            radius: campus.geofence.radiusMeters) {
+            setScope(.campus(schoolId: campus.schoolId))
+        } else {
+            setScope(.none)
+        }
+
+        Log.location.debug("Spring Break presence paused")
     }
 
     private func setScope(_ scope: CommunityScope) {
@@ -323,6 +503,13 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
             reevaluateScope()
             return
         }
+
+        // Actually leaving a destination is a real signal, so a later re-entry
+        // should get a fresh attempt rather than inheriting an old pause.
+        if region.identifier.hasPrefix(Self.destinationRegionPrefix) {
+            suppressDestinationClaims = false
+        }
+
         reevaluateScope()
     }
 

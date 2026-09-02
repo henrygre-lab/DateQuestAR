@@ -10,6 +10,10 @@
 //     live window — the destination's server-supplied label. No neighbourhood,
 //     venue, building or geohash appears anywhere (DESIGN_SYSTEM.md §8).
 // [x] Off campus the card says so and Quest Mode cannot be started from here
+// [x] A lapsed Spring Break claim is surfaced, never silent. If presence stops
+//     being refreshed the pool narrows to same-school, and the banner says so —
+//     a user who believed they were still in the multi-school pool would
+//     otherwise have no way to tell.
 // [x] The gender-ratio chip is shown only when the user is Dating-gated, because
 //     it describes a mechanism that does not apply to anyone else
 
@@ -78,6 +82,7 @@ struct HomeView: View {
             ScrollView {
                 VStack(spacing: DQSpace.gutter) {
                     header
+                    springBreakBanner
                     questCard
                     #if DEBUG
                     DemoControl(
@@ -166,6 +171,42 @@ struct HomeView: View {
                 .overlay(Circle().strokeBorder(p.ember, lineWidth: 2))
         }
         .accessibilityLabel("Account menu for \(displayName)")
+    }
+
+    // MARK: - Spring Break
+
+    /// Shown only when a destination claim has lapsed.
+    ///
+    /// Deliberately not a chip on the Quest card: the card describes what Quest
+    /// Mode is doing, and this describes something that stopped. Sharing the
+    /// slot would let one overwrite the other.
+    @ViewBuilder
+    private var springBreakBanner: some View {
+        if let message = locationService.springBreakStatus.pausedMessage {
+            HStack(alignment: .top, spacing: DQSpace.tight) {
+                Image(systemName: "pause.circle")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(p.text2)
+
+                Text(message)
+                    .font(DQFont.bodyS)
+                    .foregroundStyle(p.text2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Spacer(minLength: 0)
+            }
+            .padding(DQSpace.card)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: DQRadius.card, style: .continuous).fill(p.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DQRadius.card, style: .continuous)
+                    .strokeBorder(p.line, lineWidth: 1)
+            )
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(message)
+        }
     }
 
     // MARK: - Quest Card
@@ -258,11 +299,15 @@ struct HomeView: View {
     private var signalsSection: some View {
         let signals = Array(matchManager.nearbyUsers.prefix(2))
         if !locationService.communityScope.allowsQuestMode {
+            // When a Spring Break claim has lapsed the banner above already
+            // explains the pause, so this states the consequence without
+            // repeating the cause.
             DQEmptyState(
                 symbol: "pause.circle",
                 title: "Quest Mode is paused",
-                message: "You're outside your campus. Nothing is scanning, and "
-                       + "nobody can see you."
+                message: locationService.springBreakStatus.pausedMessage == nil
+                    ? "You're outside your campus. Nothing is scanning, and nobody can see you."
+                    : "Nothing is scanning, and nobody can see you."
             )
             .padding(.top, DQSpace.block)
         } else if !signals.isEmpty {

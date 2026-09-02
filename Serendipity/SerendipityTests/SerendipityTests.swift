@@ -377,6 +377,52 @@ final class SerendipityTests: XCTestCase {
         XCTAssertFalse(dest.isLive(at: now), "a malformed window must fail closed")
     }
 
+    // MARK: - Spring Break Presence Status
+
+    func test_springBreakStatus_activeHasNoPausedMessage() {
+        let status = SpringBreakStatus.active(destinationId: "cancun",
+                                              displayLabel: "Cancún · Spring Break")
+        XCTAssertNil(status.pausedMessage)
+        XCTAssertTrue(status.isActive)
+    }
+
+    func test_springBreakStatus_recoverablePausesShareTheSameCopy() {
+        // Left the fence, turned Quest off, or a refresh failed: in all three the
+        // user can get back into the pool, so they get the same instruction.
+        let reasons: [SpringBreakStatus.PauseReason] = [.leftFence, .questModeOff, .refreshFailed]
+        let messages = reasons.map {
+            SpringBreakStatus.paused(displayLabel: "Cancún · Spring Break", reason: $0).pausedMessage
+        }
+        XCTAssertTrue(messages.allSatisfy { $0 == messages.first })
+        XCTAssertEqual(
+            messages.first,
+            "Spring Break paused — keep Quest on at the destination to stay in the multi-school pool."
+        )
+    }
+
+    func test_springBreakStatus_windowEndedDoesNotTellUserToKeepQuestOn() throws {
+        // Nothing they can do, so the recoverable copy would be a lie.
+        let status = SpringBreakStatus.paused(displayLabel: "Cancún · Spring Break",
+                                              reason: .windowEnded)
+        let message = try XCTUnwrap(status.pausedMessage)
+        XCTAssertFalse(message.contains("keep Quest on"))
+        XCTAssertTrue(message.contains("ended"))
+    }
+
+    func test_springBreakStatus_inactiveIsSilent() {
+        XCTAssertNil(SpringBreakStatus.inactive.pausedMessage)
+        XCTAssertNil(SpringBreakStatus.inactive.displayLabel)
+        XCTAssertFalse(SpringBreakStatus.inactive.isActive)
+    }
+
+    func test_springBreakStatus_pausedIsNotActive() {
+        // The gate must never read a paused status as an open pool.
+        let paused = SpringBreakStatus.paused(displayLabel: "Cancún · Spring Break",
+                                              reason: .refreshFailed)
+        XCTAssertFalse(paused.isActive)
+        XCTAssertEqual(paused.displayLabel, "Cancún · Spring Break")
+    }
+
     func test_communityScope_noneBlocksQuestMode() {
         XCTAssertFalse(CommunityScope.none.allowsQuestMode)
         XCTAssertTrue(CommunityScope.campus(schoolId: "ucla").allowsQuestMode)
