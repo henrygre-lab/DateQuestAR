@@ -1,5 +1,10 @@
 // MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets, API keys, or tokens
+// [x] Community context and the intent lock are copied from the match, never
+//     re-derived from live user state — a mid-session intent change cannot move
+//     a session's gender-balance posture
+// [x] NameDrop requires the student ID <-> liveness face match (canNameDrop);
+//     firestore.rules rejects a 'connected' write without the faceMatched claim
 // [x] Full photos never exposed until revealStage == .connected — client receives
 //     blurred/partial variants via server-generated signed URLs (short-lived)
 // [x] All Firestore writes use updateData with only changed fields — never
@@ -70,7 +75,17 @@ final class RevealManager: ObservableObject {
             icebreakerType: .trivia,  // Default; updated when icebreaker starts
             revealStage: .blurred,
             sessionTimeout: timeout,
-            lastUpdated: now
+            lastUpdated: now,
+            // Community context and the intent lock are copied off the match,
+            // which fixed them at creation. Re-deriving them here from either
+            // user's current state would reopen the intent-toggle exploit: the
+            // whole point is that these do not move once a session opens.
+            schoolId: match.schoolId,
+            partnerSchoolId: match.partnerSchoolId,
+            scope: match.scope,
+            springBreakDestinationID: match.springBreakDestinationID,
+            lockedIntents: match.lockedIntents,
+            isDatingGated: match.isDatingGated
         )
 
         #if DEBUG
@@ -159,9 +174,20 @@ final class RevealManager: ObservableObject {
     /// exchange (mutual consent).** Calling this without mutual confirmation
     /// would expose full photos prematurely, violating Risk #3 mitigation.
     ///
+    /// NameDrop also requires the student ID <-> liveness face match, whatever the
+    /// encounter's intent. Exchanging real identity is the moment the stakes rise,
+    /// so it carries the Dating-tier proof even on a Study encounter.
+    /// `firestore.rules` enforces the same thing: a write moving revealStage to
+    /// 'connected' is rejected without the faceMatched claim.
+    ///
     /// Firestore write is narrow: only revealStage, revealProgress, lastUpdated.
-    func completeReveal(for sessionID: String) async {
+    func completeReveal(for sessionID: String, currentUser: UserProfile) async {
         guard var session = sessionByID(sessionID) else { return }
+
+        guard currentUser.canNameDrop else {
+            Log.reveal.error("NameDrop blocked: student ID face match required")
+            return
+        }
 
         // Only allow completion from .revealed stage (icebreaker must be done first)
         guard session.revealStage == .revealed else {

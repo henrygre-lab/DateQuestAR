@@ -4,6 +4,9 @@
 // [x] No Firestore / network access — purely in-memory simulation for portfolio demos
 // [x] No real location or UWB hardware touched — synthetic distance values only
 // [x] Mock candidate contains no real PII — fabricated demo persona
+// [x] Demo candidates carry the same demo schoolId as the bypass persona, and are
+//     student-ID verified, so the walkthrough runs the real community gate rather
+//     than modelling a cross-campus pairing production would refuse
 // [x] Production proximity path (ProximityService + MatchManager.handleProximityEvent)
 //     is untouched; this provider only feeds MatchManager's explicit demo entry points
 
@@ -19,6 +22,11 @@ import Combine
 /// device (or Simulator) with no location/UWB hardware and no backend.
 @MainActor
 final class DemoProximityProvider: ObservableObject {
+
+    /// The community every demo persona belongs to. Shared by the bypass user
+    /// and both candidates so `CommunityGate.canShare` passes honestly.
+    static let demoSchoolId = "demo_school"
+    static let demoSchoolName = "Demo University"
 
     /// Current simulated distance to the demo match, in miles.
     @Published private(set) var distanceMiles: Double = 0.25
@@ -100,7 +108,6 @@ final class DemoProximityProvider: ObservableObject {
             preferences: MatchPreferences(
                 ageRange: 28...40,
                 maxDistanceMiles: 0.25,
-                relationshipTypes: [.casual],
                 genderPreferences: [],
                 interests: ["coffee"],
                 dealbreakers: [],
@@ -119,6 +126,13 @@ final class DemoProximityProvider: ObservableObject {
             trustScore: 0.6,
             createdAt: Date(),
             lastActive: Date(),
+            // Same demo campus as the bypass persona: the walkthrough must not be
+            // able to show a cross-campus pairing production would refuse.
+            schoolId: DemoProximityProvider.demoSchoolId,
+            schoolDisplayName: DemoProximityProvider.demoSchoolName,
+            enrollmentStatus: .enrolled,
+            studentIDStatus: .verified,
+            activeIntents: [.hangout, .study],
             gender: .male,
             accountStatus: .active,
             intentVibes: ["genuine", "spontaneous"],
@@ -145,7 +159,6 @@ final class DemoProximityProvider: ObservableObject {
             preferences: MatchPreferences(
                 ageRange: 22...34,
                 maxDistanceMiles: 0.25,
-                relationshipTypes: [.longTerm],
                 genderPreferences: [],
                 interests: ["coding", "coffee", "hiking"],
                 dealbreakers: [],
@@ -164,6 +177,13 @@ final class DemoProximityProvider: ObservableObject {
             trustScore: 0.88,
             createdAt: Date(),
             lastActive: Date(),
+            schoolId: DemoProximityProvider.demoSchoolId,
+            schoolDisplayName: DemoProximityProvider.demoSchoolName,
+            enrollmentStatus: .enrolled,
+            // Face-matched so the walkthrough can exercise both the non-Dating
+            // and the Dating branch of the intent lock.
+            studentIDStatus: .faceMatched,
+            activeIntents: [.hangout, .study],
             gender: .female,
             accountStatus: .active,
             intentVibes: ["adventurous", "genuine", "spontaneous"],

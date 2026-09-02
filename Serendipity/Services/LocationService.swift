@@ -1,7 +1,20 @@
 // MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
-// [x] No raw coordinates stored — only geohash
-// [x] Auto-pause zones respected
-// [x] Motion filter (walking/running) for new sessions
+// [x] No hardcoded secrets, API keys, or tokens
+// [x] No raw coordinates stored — only geohash precision 7 leaves this file, and
+//     the campus / destination check-in sends a geohash, never a coordinate
+// [x] User auto-pause zones respected (home, work, custom)
+// [x] Campus geofence auto-pause — off campus and outside every live Spring Break
+//     fence, communityScope is .none and Quest Mode stops. Fail-closed: the scope
+//     starts at .none and only a positive containment test moves it off.
+// [x] Campus and destination geofences come from backend documents; there is no
+//     client-authored polygon and no client-authored window
+// [x] Cross-school visibility requires a server confirmation round-trip
+//     (confirmDestinationPresence) — detecting the fence locally is not enough
+// [x] Leaving a destination clears presence server-side, so no cross-school radar
+//     survives the trip home
+// [x] No place name is derived or published here — the scope carries a schoolId or
+//     the destination's own server-supplied label, never a neighbourhood or venue
+// [x] No PII logged — region identifiers and scope transitions only
 
 import Foundation
 import CoreLocation
@@ -26,6 +39,44 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
     private var autoPauseZones: [GeoFenceZone] = []
     private var isPaused = false
     private var pendingQuestStart = false
+
+    // MARK: - Community Scope
+
+    /// Which pool the device is currently allowed to see.
+    ///
+    /// Starts at `.none` and stays there until a containment test says otherwise.
+    /// Everything downstream — the nearby query, the match path, the icebreaker —
+    /// reads this, so an unknown location means an empty pool rather than an
+    /// unscoped one.
+    @Published private(set) var communityScope: CommunityScope = .none
+
+    /// The user's own campus, from `schools/{schoolId}`.
+    private var campus: (schoolId: String, geofence: CampusGeofence)?
+
+    /// Live-window destinations, from `spring_break_destinations`.
+    private var springBreakDestinations: [SpringBreakDestination] = []
+
+    /// Destination whose fence we are currently inside and the server has
+    /// confirmed. Nil unless both are true.
+    private var confirmedDestination: SpringBreakDestination?
+
+    private static let campusRegionIdentifier = "serendipity.campus"
+    private static let destinationRegionPrefix = "serendipity.destination."
+
+    /// Quest radius in miles for the current scope. Tightens after dusk inside a
+    /// Spring Break destination.
+    var currentQuestRadiusMiles: Double {
+        guard let destination = confirmedDestination, destination.isAfterDusk() else {
+            return 0.25
+        }
+        return destination.duskRadiusMiles
+    }
+
+    /// True when the UI should default to Squad Radar: after dusk at a
+    /// destination, where people arrive in groups and should stay in them.
+    var prefersSquadRadar: Bool {
+        confirmedDestination?.isAfterDusk() ?? false
+    }
 
     private override init() {
         super.init()
@@ -83,12 +134,162 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
         }
     }
 
+    // MARK: - Campus Geofence
+
+    /// Arms the user's campus boundary from their school document.
+    ///
+    /// The centre arrives as a geohash and is decoded here purely to build a
+    /// `CLCircularRegion`. It is never written back, never published, and never
+    /// rendered — DESIGN_SYSTEM.md §8 allows the school's *name*, not its
+    /// coordinates.
+    func configureCampus(schoolId: String, geofence: CampusGeofence) {
+        campus = (schoolId, geofence)
+
+        locationManager.monitoredRegions
+            .filter { $0.identifier == Self.campusRegionIdentifier }
+            .forEach { locationManager.stopMonitoring(for: $0) }
+
+        guard let center = decodeGeohash(geofence.centerGeohash) else {
+            Log.location.error("Campus geofence could not be decoded")
+            return
+        }
+
+        let region = CLCircularRegion(center: center,
+                                      radius: geofence.radiusMeters,
+                                      identifier: Self.campusRegionIdentifier)
+        region.notifyOnEntry = true
+        region.notifyOnExit = true
+        locationManager.startMonitoring(for: region)
+
+        // Region monitoring only fires on a crossing. Evaluate immediately so a
+        // user who launches the app already on campus is not stuck at .none.
+        reevaluateScope()
+    }
+
+    /// Arms the live Spring Break destination fences.
+    ///
+    /// Only destinations whose server-dated window is currently live are armed.
+    /// A destination out of window is not a place the app knows about.
+    func configureSpringBreakDestinations(_ destinations: [SpringBreakDestination]) {
+        springBreakDestinations = destinations.filter { $0.isLive() }
+
+        locationManager.monitoredRegions
+            .filter { $0.identifier.hasPrefix(Self.destinationRegionPrefix) }
+            .forEach { locationManager.stopMonitoring(for: $0) }
+
+        for destination in springBreakDestinations {
+            guard let id = destination.id,
+                  let center = decodeGeohash(destination.centerGeohash) else { continue }
+            let region = CLCircularRegion(center: center,
+                                          radius: destination.radiusMeters,
+                                          identifier: Self.destinationRegionPrefix + id)
+            region.notifyOnEntry = true
+            region.notifyOnExit = true
+            locationManager.startMonitoring(for: region)
+        }
+
+        reevaluateScope()
+    }
+
+    // MARK: - Scope Evaluation
+
+    /// Recomputes `communityScope` from the current location.
+    ///
+    /// Order matters. Campus wins over a destination fence: a student standing on
+    /// their own campus belongs to their own community, whatever else overlaps.
+    /// Everything else is `.none`, which pauses Quest Mode.
+    private func reevaluateScope() {
+        guard let location = currentLocation else {
+            setScope(.none)
+            return
+        }
+
+        if let campus, containsLocation(location, geohash: campus.geofence.centerGeohash,
+                                        radius: campus.geofence.radiusMeters) {
+            if confirmedDestination != nil { Task { await releaseDestination() } }
+            setScope(.campus(schoolId: campus.schoolId))
+            return
+        }
+
+        if let destination = springBreakDestinations.first(where: {
+            $0.isLive() && containsLocation(location,
+                                            geohash: $0.centerGeohash,
+                                            radius: $0.radiusMeters)
+        }) {
+            Task { await claimDestination(destination) }
+            return
+        }
+
+        if confirmedDestination != nil { Task { await releaseDestination() } }
+        setScope(.none)
+    }
+
+    private func containsLocation(_ location: CLLocation,
+                                  geohash: String,
+                                  radius: Double) -> Bool {
+        guard let center = decodeGeohash(geohash) else { return false }
+        let centerLocation = CLLocation(latitude: center.latitude, longitude: center.longitude)
+        return location.distance(from: centerLocation) <= radius
+    }
+
+    /// Asks the backend to confirm presence, and only then widens the pool.
+    ///
+    /// Being inside the fence is necessary but not sufficient: the cross-school
+    /// pool opens on a custom claim that only `confirmDestinationPresence` can
+    /// issue, after it re-checks the fence and the window against its own copies.
+    /// A tampered client that skips this call gets a claimless token and reads
+    /// nothing.
+    @MainActor
+    private func claimDestination(_ destination: SpringBreakDestination) async {
+        guard let id = destination.id else { return }
+        guard confirmedDestination?.id != id else { return }
+        guard let geohash = currentGeohash else { return }
+
+        let label = await SchoolGateManager.shared
+            .confirmDestinationPresence(destinationId: id, geohash: geohash)
+
+        guard let label else {
+            // Server said no. Stay paused rather than falling back to campus —
+            // the user is demonstrably not on campus either.
+            confirmedDestination = nil
+            setScope(.none)
+            return
+        }
+
+        confirmedDestination = destination
+        setScope(.springBreak(destinationId: id, displayLabel: label))
+    }
+
+    /// Drops destination presence on the server and locally.
+    @MainActor
+    private func releaseDestination() async {
+        confirmedDestination = nil
+        await SchoolGateManager.shared.clearDestinationPresence()
+    }
+
+    private func setScope(_ scope: CommunityScope) {
+        guard communityScope != scope else { return }
+        communityScope = scope
+        // Off campus and outside every live fence means Quest Mode has nothing
+        // to scan for. This is the auto-pause the product rules require.
+        isPaused = (scope == .none)
+        if isPaused { stopHaptics() }
+        Log.location.debug("Community scope changed")
+        Task { await MatchManager.shared.communityScopeChanged(to: scope) }
+    }
+
     // MARK: - CLLocationManagerDelegate
 
     func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        guard let location = locations.last, !isPaused else { return }
+        guard let location = locations.last else { return }
         currentLocation = location
         currentGeohash = encodeGeohash(location.coordinate, precision: 7)
+
+        // Scope is evaluated even while paused — that is how the app notices the
+        // user walking back onto campus.
+        reevaluateScope()
+
+        guard !isPaused else { return }
         Task {
             await MatchManager.shared.refreshNearbyUsers()
         }
@@ -105,17 +306,24 @@ final class LocationService: NSObject, ObservableObject, CLLocationManagerDelega
 
     func locationManager(_ manager: CLLocationManager, didEnterRegion region: CLRegion) {
         if autoPauseZones.contains(where: { $0.id == region.identifier }) {
+            // A user pause zone wins over everything, including being on campus.
+            // Home is home.
             isPaused = true
             stopHaptics()
-            Log.location.debug("Auto-paused in zone: \(region.identifier)")
+            Log.location.debug("Auto-paused in a user zone")
+            return
         }
+        reevaluateScope()
     }
 
     func locationManager(_ manager: CLLocationManager, didExitRegion region: CLRegion) {
         if autoPauseZones.contains(where: { $0.id == region.identifier }) {
             isPaused = false
-            Log.location.debug("Resumed from zone: \(region.identifier)")
+            Log.location.debug("Resumed from a user zone")
+            reevaluateScope()
+            return
         }
+        reevaluateScope()
     }
 
     // MARK: - Proximity Broadcast

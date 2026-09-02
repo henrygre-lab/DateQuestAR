@@ -7,6 +7,13 @@
 // [x] No PII in BLE advertisements — only app service UUID and generic local name
 // [x] Per-user profile data never transmitted over BLE — only matched via Firestore UID
 // [x] No mutable public user state — profile passed explicitly to all filtering methods
+// [x] Same-school gate before any proximity alert — shouldFireProximityAlert runs
+//     CommunityGate.canShare against the current CommunityScope, so a BLE or UWB
+//     advertisement from another campus is discarded rather than matched
+// [x] Off campus (scope .none) no proximity alert can fire at all
+// [x] Gender-balance throttling applies only to Dating-gated pairs
+// [x] Squad Radar is the default after dusk inside a Spring Break destination
+// [x] NearbyInteraction discovery tokens are per-session and never persisted
 // [x] Analytics events contain no raw UIDs or PII
 
 import Foundation
@@ -60,10 +67,17 @@ final class ProximityService: NSObject, ObservableObject {
     // MARK: - Squad Radar Mode
 
     /// Evaluates whether squad radar mode should be active.
-    /// Defaults to squad mode when user prefers social context OR local density is high.
-    func evaluateSquadRadarMode(prefersSocialContext: Bool, nearbyCount: Int) {
+    ///
+    /// `forceSquadRadar` is set after dusk inside a Spring Break destination,
+    /// where people arrive in groups and should stay in them. It overrides the
+    /// user preference in the permissive direction only — it can switch squad
+    /// mode on, never off.
+    @MainActor
+    func evaluateSquadRadarMode(prefersSocialContext: Bool,
+                                nearbyCount: Int,
+                                forceSquadRadar: Bool = false) {
         let wasEnabled = isSquadRadarMode
-        if prefersSocialContext || nearbyCount >= highDensityThreshold {
+        if forceSquadRadar || prefersSocialContext || nearbyCount >= highDensityThreshold {
             isSquadRadarMode = true
         } else {
             isSquadRadarMode = false
@@ -79,6 +93,11 @@ final class ProximityService: NSObject, ObservableObject {
 
     /// Checks all pre-conditions before a proximity alert should fire.
     /// Returns true only if the alert should proceed.
+    ///
+    /// Radio proximity is not membership. Anyone standing within BLE range can
+    /// advertise — another campus's student, a local, a passer-by — so the
+    /// community gate runs first and cheapest, before any scoring work.
+    @MainActor
     func shouldFireProximityAlert(
         currentUser: UserProfile,
         candidate: UserProfile
@@ -87,7 +106,19 @@ final class ProximityService: NSObject, ObservableObject {
         guard currentUser.accountStatus == .active else { return false }
         guard candidate.accountStatus == .active else { return false }
 
-        // 2. Intent/vibe pre-filter via MatchManager's scoring
+        // 2. Same school, or the same live Spring Break destination. Off campus
+        //    the scope is .none and this fails for everyone.
+        guard CommunityGate.canShare(viewer: currentUser,
+                                     candidate: candidate,
+                                     in: LocationService.shared.communityScope) else {
+            return false
+        }
+
+        // 3. Some shared reason to meet.
+        let locked = EncounterSession.lockIntents(currentUser, candidate)
+        guard !locked.isEmpty else { return false }
+
+        // 4. Intent/vibe pre-filter via MatchManager's scoring
         let vibeScore = MatchManager.shared.scoreVibeCompatibility(
             currentUser.intentVibes, candidate.intentVibes
         )
@@ -96,8 +127,10 @@ final class ProximityService: NSObject, ObservableObject {
             return false
         }
 
-        // 3. BalanceEnforcer visibility gate (women-first queuing)
-        guard BalanceEnforcer.shared.shouldShowMatch(to: currentUser) else { return false }
+        // 5. BalanceEnforcer visibility gate — Dating overlaps only.
+        if Intent.engagesGenderBalance(locked) {
+            guard BalanceEnforcer.shared.shouldShowMatch(to: currentUser) else { return false }
+        }
 
         return true
     }
