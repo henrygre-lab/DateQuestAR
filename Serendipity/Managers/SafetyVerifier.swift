@@ -596,6 +596,13 @@ final class SafetyVerifier: ObservableObject {
 
     static func reportUnsafeProximity(matchID: String, reason: String) async {
         Log.safety.error("Unsafe proximity reported: \(reason)")
-        // TODO: Firestore report + session termination + BalanceEnforcer escalation
+
+        // Terminate the session immediately and free the slot. The reason is
+        // recorded as `.unsafeProximity` rather than `.pass` so the audit trail
+        // says what actually happened — the slot outcome is identical, but a
+        // report and a shrug are not the same event to review later.
+        await RevealManager.shared.endSession(for: matchID, reason: .unsafeProximity)
+
+        // TODO: Firestore report record + BalanceEnforcer escalation
     }
 }

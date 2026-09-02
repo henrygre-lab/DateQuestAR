@@ -136,7 +136,9 @@ struct EncounterView: View {
         }
         .sheet(isPresented: $showSafetySheet) {
             SafetySheetView(
-                onEndEncounter: { matchManager.endDemoEncounter() },
+                // Ending the encounter is the explicit pass: it re-blurs and
+                // frees the encounter slot for both people.
+                onEndEncounter: { matchManager.endCurrentEncounter(reason: .pass) },
                 onReport: { showReport = true }
             )
         }
@@ -180,7 +182,7 @@ struct EncounterView: View {
                 // Labelled duplicate of the ✕ — a safety-adjacent product never
                 // buries the exit.
                 Button(role: .destructive) {
-                    matchManager.endDemoEncounter()
+                    matchManager.endCurrentEncounter(reason: .pass)
                 } label: {
                     Label("End encounter", systemImage: "xmark.circle")
                 }

@@ -57,6 +57,42 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "encounter_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "participantUIDs",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "slotState",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sessionTimeout",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "encounter_sessions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "matchID",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "slotState",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "sessionTimeout",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

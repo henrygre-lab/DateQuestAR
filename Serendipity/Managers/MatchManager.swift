@@ -27,6 +27,13 @@
 //     server cooldown keeps the caps on afterwards
 // [x] Client filters here are courtesy only — firestore.rules enforces the same
 //     school predicate per document and is the real boundary
+// [x] Encounter slot cap (2 per user) gates alerts in BOTH directions: a capped
+//     user sends no new alerts and is shown none. The count comes from Firestore
+//     via RevealManager, never a local array, and openEncounterSession re-counts
+//     inside a transaction — so a client that ignores this gate still cannot open
+//     a third session.
+// [x] The cap is on top of the Dating caps and the 24h Dating cooldown, not
+//     instead of them, and applies to every intent
 // [x] No raw coordinates logged — only match IDs and enum states
 // [x] No mutable public user state — profile passed explicitly to avoid stale data
 // [x] Analytics events contain no raw UIDs — partner UIDs hashed before logging
@@ -50,6 +57,16 @@ final class MatchManager: ObservableObject {
     @Published var currentIcebreaker: IcebreakerChallenge?
     @Published var isQuestModeActive = false
     @Published var nearbyUsers: [UserProfile] = []
+
+    /// True when the user is holding the maximum number of encounters.
+    ///
+    /// Republished from `RevealManager` rather than computed off it: a computed
+    /// property reading another object's `@Published` value does not notify this
+    /// object's observers, so the Home and Radar lines would only appear on the
+    /// next unrelated redraw.
+    ///
+    /// Courtesy display only — the cap is enforced by `openEncounterSession`.
+    @Published private(set) var isAtSessionCap = false
 
     #if DEBUG
     // MARK: - Demo State (DEBUG only)
@@ -93,6 +110,7 @@ final class MatchManager: ObservableObject {
 
     private let alertCapManager = AlertCapManager.shared
     private let balanceEnforcer = BalanceEnforcer.shared
+    private let revealManager = RevealManager.shared
     private let firestoreService = FirestoreService.shared
     private let analytics = AnalyticsService.shared
 
@@ -107,6 +125,7 @@ final class MatchManager: ObservableObject {
 
     private init() {
         observeProximityEvents()
+        observeSessionSlots()
     }
 
     // MARK: - Quest Mode
@@ -129,6 +148,11 @@ final class MatchManager: ObservableObject {
         activeQuestUser = user
         isQuestModeActive = true
 
+        // Start counting encounter slots from Firestore. Until this is running
+        // the client has no idea how many it holds, which is why the server
+        // re-counts on every open rather than trusting what arrives.
+        revealManager.startObservingSlots(uid: user.uid)
+
         // Arm the campus boundary before scanning starts. Until LocationService
         // has a campus to test against, the scope stays .none and the nearby
         // query returns nothing — which is the correct answer, not a bug.
@@ -144,12 +168,46 @@ final class MatchManager: ObservableObject {
     }
 
     func disableQuestMode() {
+        // Free the slots before dropping local state, so a user who stops looking
+        // stops occupying the other person's slot too.
+        Task { await revealManager.releaseAllSessions() }
+        revealManager.stopObservingSlots()
+
         activeQuestUser = nil
         isQuestModeActive = false
         nearbyUsers = []
         activeMatches = []
         LocationService.shared.stopQuestScanning()
         NotificationCenter.default.post(name: .questModeChanged, object: false)
+    }
+
+    /// Ends the encounter on screen and frees its slot.
+    ///
+    /// The explicit-pass path. Works for a real encounter and a demo one — the
+    /// demo shares the same stage machine, so it should share the same exit.
+    func endCurrentEncounter(reason: EncounterSession.CloseReason) {
+        guard let matchID = nearbyMatch?.id else { return }
+        Task { await RevealManager.shared.endSession(for: matchID, reason: reason) }
+
+        #if DEBUG
+        if RevealManager.shared.isDemoMode {
+            endDemoEncounter()
+            return
+        }
+        #endif
+
+        nearbyMatch = nil
+        nearbyMatchProfile = nil
+        currentIcebreaker = nil
+    }
+
+    /// Mirrors RevealManager's slot count onto this object so views binding to
+    /// MatchManager see the cap change as it happens.
+    private func observeSessionSlots() {
+        revealManager.$isAtSessionCap
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] atCap in self?.isAtSessionCap = atCap }
+            .store(in: &cancellables)
     }
 
     // MARK: - Community Scope
@@ -215,14 +273,22 @@ final class MatchManager: ObservableObject {
                                      candidate: match,
                                      in: communityScope) else { return false }
 
-        // 2. Verification depth and account standing.
+        // 2. Encounter slots. Someone already holding two encounters is not
+        //    available for a third, in either direction — no outbound alert, and
+        //    nothing inbound shown to them. Checked early because it is a local
+        //    read and rules out the whole candidate.
+        guard !revealManager.isAtSessionCap else { return false }
+
+        // 3. Verification depth and account standing.
         guard SafetyVerifier.isSafeToAlert(match) else { return false }
 
-        // 3. Some shared reason to meet at all.
+        // 4. Some shared reason to meet at all.
         let locked = EncounterSession.lockIntents(currentUser, match)
         guard !locked.isEmpty else { return false }
 
-        // 4. Gender-balance layers — Dating overlaps only.
+        // 5. Gender-balance layers — Dating overlaps only. Note this is on top of
+        //    the slot cap above, not instead of it: the caps ration romantic
+        //    attention, the cap rations attention full stop.
         if EncounterSession.locksDatingGate(currentUser, match) {
             guard CommunityGate.canShareForDating(viewer: currentUser,
                                                   candidate: match,
@@ -996,7 +1062,9 @@ final class MatchManager: ObservableObject {
     func endDemoEncounter() {
         let matchID = nearbyMatch?.id
         Task {
-            if let matchID { await RevealManager.shared.endSession(for: matchID) }
+            if let matchID {
+                await RevealManager.shared.endSession(for: matchID, reason: .pass)
+            }
             RevealManager.shared.isDemoMode = false
         }
 

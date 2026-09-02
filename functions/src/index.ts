@@ -38,6 +38,15 @@ export {
 // MARK: - Intents (server-owned; Dating-off starts the 24h cooldown)
 export { setActiveIntents } from "./intents";
 
+// MARK: - Encounter Sessions (the 2-slot cap)
+// Sessions are created ONLY here — firestore.rules denies client creates, so the
+// slot count cannot be bypassed by a client writing its own session document.
+export {
+  openEncounterSession,
+  closeEncounterSession,
+  releaseEncounterSessions,
+} from "./encounterSessions";
+
 // MARK: - Gamification (self-only XP and badge grants)
 // Cross-user rewards (referral, waitlist survivor) have no callable entry point —
 // they are issued by activateWaitlistedUsers.

@@ -15,6 +15,11 @@ rules_version = '2';
 // [x] users/{uid}/verification/** is owner-read and function-write only; no other
 //     client can read a student ID path, school email or phone hash
 // [x] Cross-school reads require BOTH sides confirmed at the same live destination
+// [x] encounter_sessions creates are denied outright. The two-per-user cap is a
+//     count across documents and rules cannot count, so session creation lives in
+//     openEncounterSession where the count and the write share a transaction.
+//     participantUIDs, slotState, closedReason, closedAt and sessionTimeout are
+//     immutable to clients for the same reason.
 // [x] Waitlist and gender stats are backend-write-only
 // [x] Minimal data — user list queries fail unless every returned document is in
 //     the caller's own community, so a client cannot enumerate other campuses
@@ -291,20 +296,25 @@ service cloud.firestore {
     function lockedSessionFields() {
       return ['matchID', 'userAUID', 'userBUID', 'schoolId', 'partnerSchoolId',
               'scope', 'springBreakDestinationID', 'lockedIntents', 'isDatingGated',
-              'startTimestamp'];
+              'startTimestamp',
+              // Slot accounting is server-owned. A client that could write these
+              // could free its own slot without ending the encounter, or open a
+              // third one — which is the entire cap.
+              'participantUIDs', 'slotState', 'closedReason', 'closedAt',
+              'sessionTimeout'];
     }
 
     match /encounter_sessions/{sessionId} {
       allow get, list: if isSessionParticipant(resource.data);
 
-      allow create: if isQuestEligible()
-        && isSessionParticipant(request.resource.data)
-        && matchCommunityAllowed(request.resource.data)
-        && datingGateSatisfied(request.resource.data)
-        && request.resource.data.revealProgress >= 0.0
-        && request.resource.data.revealProgress <= 1.0
-        // A session may only ever open at .blurred. Fail-closed reveal.
-        && request.resource.data.revealStage == 'blurred';
+      // Sessions are created ONLY by openEncounterSession.
+      //
+      // The two-encounter cap is a count across documents, and rules cannot
+      // count — there is no aggregate query in this language. So a client-created
+      // session could always have been the third one. Denying creates outright
+      // moves the count somewhere it can be done atomically, inside a
+      // transaction, alongside the write it guards.
+      allow create: if false;
 
       allow update: if isQuestEligible()
         && isSessionParticipant(resource.data)

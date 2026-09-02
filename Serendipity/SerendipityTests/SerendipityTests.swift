@@ -377,6 +377,127 @@ final class SerendipityTests: XCTestCase {
         XCTAssertFalse(dest.isLive(at: now), "a malformed window must fail closed")
     }
 
+    // MARK: - Encounter Slot Cap
+
+    func test_thirdSessionIsRejected() {
+        let me = "me"
+        let sessions = [
+            TestProfiles.session(id: "s1", with: me, partner: "a"),
+            TestProfiles.session(id: "s2", with: me, partner: "b")
+        ]
+        XCTAssertEqual(EncounterSession.activeSlotCount(for: me, in: sessions), 2)
+        XCTAssertTrue(EncounterSession.isAtSlotCap(me, in: sessions),
+                      "a third encounter must not be openable")
+    }
+
+    func test_oneSessionLeavesRoomForOneMore() {
+        let me = "me"
+        let sessions = [TestProfiles.session(id: "s1", with: me, partner: "a")]
+        XCTAssertEqual(EncounterSession.activeSlotCount(for: me, in: sessions), 1)
+        XCTAssertFalse(EncounterSession.isAtSlotCap(me, in: sessions))
+    }
+
+    func test_slotFreesOnPass() {
+        let me = "me"
+        var passed = TestProfiles.session(id: "s1", with: me, partner: "a")
+        var live = TestProfiles.session(id: "s2", with: me, partner: "b")
+
+        XCTAssertTrue(EncounterSession.isAtSlotCap(me, in: [passed, live]))
+
+        // Explicit pass closes the slot.
+        passed.slotState = .closed
+        passed.closedReason = .pass
+
+        XCTAssertEqual(EncounterSession.activeSlotCount(for: me, in: [passed, live]), 1)
+        XCTAssertFalse(EncounterSession.isAtSlotCap(me, in: [passed, live]),
+                       "passing must free a slot immediately")
+
+        // And the other one still holds its slot.
+        live.slotState = .closed
+        live.closedReason = .nameDrop
+        XCTAssertEqual(EncounterSession.activeSlotCount(for: me, in: [passed, live]), 0)
+    }
+
+    func test_everyCloseReasonFreesTheSlot() {
+        let me = "me"
+        for reason: EncounterSession.CloseReason in [.nameDrop, .pass, .unsafeProximity, .timeout, .questModeOff] {
+            var session = TestProfiles.session(id: "s", with: me, partner: "a")
+            session.slotState = .closed
+            session.closedReason = reason
+            XCTAssertEqual(EncounterSession.activeSlotCount(for: me, in: [session]), 0,
+                           "\(reason) must free the slot")
+        }
+    }
+
+    func test_timedOutSessionStopsOccupyingASlotWithoutBeingClosed() {
+        // The count filters on the window, so an abandoned encounter cannot
+        // strand someone at the cap with no way to clear it.
+        let me = "me"
+        let expired = TestProfiles.session(id: "s1", with: me, partner: "a",
+                                           timeoutOffset: -60)
+        XCTAssertEqual(expired.slotState, .active)
+        XCTAssertFalse(expired.occupiesSlot())
+        XCTAssertEqual(EncounterSession.activeSlotCount(for: me, in: [expired]), 0)
+    }
+
+    func test_slotIsHeldForBothParticipants() {
+        // A session opened by the other person still costs me a slot.
+        let session = TestProfiles.session(id: "s1", with: "me", partner: "them")
+        XCTAssertEqual(EncounterSession.activeSlotCount(for: "me", in: [session]), 1)
+        XCTAssertEqual(EncounterSession.activeSlotCount(for: "them", in: [session]), 1)
+        XCTAssertEqual(EncounterSession.activeSlotCount(for: "someone_else", in: [session]), 0)
+    }
+
+    func test_slotStateUnknownRawValueCountsAsOccupied() throws {
+        // Fail-closed the other way round from the access gates: erring toward
+        // "occupied" costs one encounter, erring toward "free" removes the cap.
+        let decoded = try JSONDecoder().decode(EncounterSession.SlotState.self,
+                                               from: Data("\"archived\"".utf8))
+        XCTAssertEqual(decoded, .active)
+    }
+
+    func test_slotCapIsTwo() {
+        XCTAssertEqual(EncounterSession.maxActiveSessionsPerUser, 2)
+    }
+
+    // MARK: - Slot Cap and Dating Caps Are Independent
+
+    func test_datingCooldownStillAppliesWhenSlotsAreFree() {
+        // The two mechanisms are orthogonal: having room for an encounter does
+        // not lift the Dating cooldown.
+        let now = Date()
+        var user = TestProfiles.datingEligible()
+        user.activeIntents = [.hangout]
+        user.datingCooldownUntil = Timestamp(date: now.addingTimeInterval(20 * 3600))
+
+        XCTAssertFalse(EncounterSession.isAtSlotCap(user.uid, in: []),
+                       "no sessions means slots are free")
+        XCTAssertTrue(user.isDatingGated(at: now),
+                      "but the 24h Dating cooldown is unaffected by slot state")
+    }
+
+    func test_slotCapAppliesEvenWhenDatingIsNotInvolved() {
+        // The cap is on top of the Dating caps and applies to every intent.
+        let me = "me"
+        var a = TestProfiles.session(id: "s1", with: me, partner: "a")
+        var b = TestProfiles.session(id: "s2", with: me, partner: "b")
+        a.lockedIntents = [.study]
+        a.isDatingGated = false
+        b.lockedIntents = [.hangout]
+        b.isDatingGated = false
+
+        XCTAssertTrue(EncounterSession.isAtSlotCap(me, in: [a, b]),
+                      "two Study encounters still fill both slots")
+    }
+
+    func test_datingGatedSessionAlsoConsumesASlot() {
+        let me = "me"
+        var dating = TestProfiles.session(id: "s1", with: me, partner: "a")
+        dating.lockedIntents = [.dating]
+        dating.isDatingGated = true
+        XCTAssertEqual(EncounterSession.activeSlotCount(for: me, in: [dating]), 1)
+    }
+
     // MARK: - Spring Break Presence Status
 
     func test_springBreakStatus_activeHasNoPausedMessage() {
@@ -461,6 +582,34 @@ enum TestProfiles {
         profile.verifiedAge = 20
         profile.activeIntents = [.hangout, .study, .dating]
         return profile
+    }
+
+    /// An open encounter session holding a slot for both participants.
+    ///
+    /// `timeoutOffset` is seconds from now — pass a negative value for a session
+    /// whose window has already elapsed.
+    static func session(id: String,
+                        with uid: String,
+                        partner: String,
+                        timeoutOffset: TimeInterval = 600) -> EncounterSession {
+        let now = Date()
+        var session = EncounterSession(
+            id: id,
+            matchID: "match_\(id)",
+            userAUID: uid,
+            userBUID: partner,
+            startTimestamp: Timestamp(date: now),
+            revealProgress: 0,
+            icebreakerType: .trivia,
+            revealStage: .blurred,
+            sessionTimeout: Timestamp(date: now.addingTimeInterval(timeoutOffset)),
+            lastUpdated: Timestamp(date: now),
+            schoolId: "ucla",
+            partnerSchoolId: "ucla"
+        )
+        session.participantUIDs = [uid, partner]
+        session.slotState = .active
+        return session
     }
 
     static func destination(id: String = "cancun",

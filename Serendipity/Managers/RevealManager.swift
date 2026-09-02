@@ -5,6 +5,15 @@
 //     a session's gender-balance posture
 // [x] NameDrop requires the student ID <-> liveness face match (canNameDrop);
 //     firestore.rules rejects a 'connected' write without the faceMatched claim
+// [x] Sessions are opened and closed by Cloud Functions, never written here.
+//     firestore.rules denies client creates on encounter_sessions, so the
+//     two-encounter cap cannot be bypassed by writing a session document.
+// [x] The slot count comes from a Firestore listener over the user's own
+//     sessions, not from the local activeSessions dictionary. A local array is
+//     exactly what a swarming client would edit; this one is a read of the same
+//     documents the server counts.
+// [x] The client count is a courtesy filter for UI. openEncounterSession runs the
+//     same count inside a transaction with a fresh clock, and that decides.
 // [x] Full photos never exposed until revealStage == .connected — client receives
 //     blurred/partial variants via server-generated signed URLs (short-lived)
 // [x] All Firestore writes use updateData with only changed fields — never
@@ -18,6 +27,7 @@
 //     EDGE_CASES_AND_OBJECTIONS.md (bus/train movement, vertical density)
 
 import Foundation
+import FirebaseFunctions
 import FirebaseFirestore
 import Combine
 
@@ -35,6 +45,17 @@ final class RevealManager: ObservableObject {
 
     @Published var activeSessions: [String: EncounterSession] = [:]  // matchID → session
 
+    /// How many encounter slots the signed-in user is currently holding.
+    ///
+    /// Read from Firestore rather than derived from `activeSessions`: the local
+    /// dictionary only knows about sessions this device opened, and a slot can be
+    /// taken by a session the *other* person opened.
+    @Published private(set) var activeSlotCount: Int = 0
+
+    /// True when there is no room for another encounter. Drives the one line on
+    /// Home and Radar; the server enforces the same thing.
+    @Published private(set) var isAtSessionCap: Bool = false
+
     #if DEBUG
     /// When true, the real stage-machine logic runs but all Firestore reads/writes
     /// and XP round-trips are skipped. Set by MatchManager during a demo encounter
@@ -45,7 +66,9 @@ final class RevealManager: ObservableObject {
     // MARK: - Dependencies
 
     private let db = Firestore.firestore()
+    private let functions = Functions.functions()
     private let analytics = AnalyticsService.shared
+    private var slotListener: ListenerRegistration?
 
     private var sessionsCollection: CollectionReference {
         db.collection("encounter_sessions")
@@ -53,70 +76,146 @@ final class RevealManager: ObservableObject {
 
     private init() {}
 
+    deinit {
+        slotListener?.remove()
+    }
+
+    // MARK: - Slot Accounting
+
+    /// Starts watching the signed-in user's encounter slots.
+    ///
+    /// The query deliberately omits the timeout filter. A Firestore listener
+    /// pins its bounds when the query is created, so `sessionTimeout > now` would
+    /// freeze `now` at subscription time and keep counting sessions long after
+    /// they expired. The window check happens per snapshot instead, against the
+    /// current clock — and the backend re-checks it with its own.
+    func startObservingSlots(uid: String) {
+        slotListener?.remove()
+        guard !uid.isEmpty else { return }
+
+        slotListener = sessionsCollection
+            .whereField("participantUIDs", arrayContains: uid)
+            .whereField("slotState", isEqualTo: EncounterSession.SlotState.active.rawValue)
+            .addSnapshotListener { [weak self] snapshot, error in
+                guard let self else { return }
+                if let error {
+                    Log.reveal.error("Slot listener error: \(error.localizedDescription)")
+                    return
+                }
+                let sessions = (snapshot?.documents ?? []).compactMap {
+                    try? $0.data(as: EncounterSession.self)
+                }
+                Task { @MainActor in self.recomputeSlots(for: uid, from: sessions) }
+            }
+    }
+
+    func stopObservingSlots() {
+        slotListener?.remove()
+        slotListener = nil
+        activeSlotCount = 0
+        isAtSessionCap = false
+    }
+
+    @MainActor
+    private func recomputeSlots(for uid: String, from sessions: [EncounterSession]) {
+        activeSlotCount = EncounterSession.activeSlotCount(for: uid, in: sessions)
+        isAtSessionCap = activeSlotCount >= EncounterSession.maxActiveSessionsPerUser
+    }
+
     // MARK: - Start Session
 
-    /// Creates a new EncounterSession when a proximity match triggers.
-    /// The session persists for 10–15 minutes regardless of distance changes,
-    /// supporting edge cases like bus/train movement and vertical density.
-    func startRevealSession(for match: Match, currentUser: UserProfile) async {
+    /// Opens an EncounterSession for a match, if both people have a free slot.
+    ///
+    /// The session document is created by `openEncounterSession`, not here.
+    /// `firestore.rules` denies client creates on `encounter_sessions`, because
+    /// the two-encounter cap is a count across documents and rules cannot count —
+    /// so the count and the write have to share a transaction, and that
+    /// transaction lives on the server.
+    ///
+    /// Returns the outcome so the caller can tell "you are full" (worth saying)
+    /// from "unavailable" (not worth saying, and not the user's business).
+    @discardableResult
+    func startRevealSession(for match: Match, currentUser: UserProfile) async -> SessionOpenResult {
         // Don't create duplicate sessions for the same match
-        guard activeSessions[match.id] == nil else { return }
-
-        let now = Timestamp(date: Date())
-        let timeout = Timestamp(date: Date().addingTimeInterval(EncounterSession.defaultDurationSeconds))
-
-        let session = EncounterSession(
-            id: nil,  // Firestore assigns document ID
-            matchID: match.id,
-            userAUID: match.userAUID,
-            userBUID: match.userBUID,
-            startTimestamp: now,
-            revealProgress: 0.0,
-            icebreakerType: .trivia,  // Default; updated when icebreaker starts
-            revealStage: .blurred,
-            sessionTimeout: timeout,
-            lastUpdated: now,
-            // Community context and the intent lock are copied off the match,
-            // which fixed them at creation. Re-deriving them here from either
-            // user's current state would reopen the intent-toggle exploit: the
-            // whole point is that these do not move once a session opens.
-            schoolId: match.schoolId,
-            partnerSchoolId: match.partnerSchoolId,
-            scope: match.scope,
-            springBreakDestinationID: match.springBreakDestinationID,
-            lockedIntents: match.lockedIntents,
-            isDatingGated: match.isDatingGated
-        )
+        guard activeSessions[match.id] == nil else { return .alreadyOpen }
 
         #if DEBUG
         if isDemoMode {
-            // No Firestore: assign a synthetic ID and keep the session in memory only.
-            var savedSession = session
-            savedSession.id = "demo_session_\(match.id)"
+            // No Firestore and no Cloud Function: build the session locally so
+            // the walkthrough runs with no backend. The slot cap still applies —
+            // the demo reads the same published count.
+            let now = Timestamp(date: Date())
+            var savedSession = EncounterSession(
+                id: "demo_session_\(match.id)",
+                matchID: match.id,
+                userAUID: match.userAUID,
+                userBUID: match.userBUID,
+                startTimestamp: now,
+                revealProgress: 0.0,
+                icebreakerType: .trivia,
+                revealStage: .blurred,
+                sessionTimeout: Timestamp(date: Date().addingTimeInterval(EncounterSession.defaultDurationSeconds)),
+                lastUpdated: now,
+                schoolId: match.schoolId,
+                partnerSchoolId: match.partnerSchoolId,
+                scope: match.scope,
+                springBreakDestinationID: match.springBreakDestinationID,
+                lockedIntents: match.lockedIntents,
+                isDatingGated: match.isDatingGated
+            )
+            savedSession.participantUIDs = [match.userAUID, match.userBUID]
             activeSessions[match.id] = savedSession
+            recomputeSlots(for: currentUser.uid, from: Array(activeSessions.values))
             analytics.logRevealSessionStarted(matchID: match.id)
-            return
+            return .opened
         }
         #endif
 
         do {
-            let docRef = try sessionsCollection.addDocument(from: session)
+            let result = try await functions
+                .httpsCallable("openEncounterSession")
+                .call(["matchId": match.id])
 
-            // Read back with Firestore-assigned ID
-            var savedSession = session
-            savedSession.id = docRef.documentID
-            activeSessions[match.id] = savedSession
+            guard let payload = result.data as? [String: Any],
+                  let sessionID = payload["sessionId"] as? String else {
+                return .unavailable
+            }
 
-            // Link session to the match document (narrow write)
-            try await db.collection("matches").document(match.id).updateData([
-                "encounterSessionID": docRef.documentID,
-                "revealStage": RevealStage.blurred.rawValue
-            ])
+            // Read the session back rather than reconstructing it: the server
+            // owns participantUIDs, the window and the slot state, and a locally
+            // assembled copy would be a guess at all three.
+            if let snapshot = try? await sessionsCollection.document(sessionID).getDocument(),
+               let saved = try? snapshot.data(as: EncounterSession.self) {
+                activeSessions[match.id] = saved
+            }
 
             analytics.logRevealSessionStarted(matchID: match.id)
+            return .opened
         } catch {
-            Log.reveal.error("Failed to create session: \(error.localizedDescription)")
+            // `resource-exhausted` is the caller's own cap, and it is the one
+            // failure worth naming — they can act on it. Everything else,
+            // including the partner being full, stays generic: telling A that B
+            // is mid-encounter is a fact about B's evening that B did not choose
+            // to share.
+            if let nsError = error as NSError?,
+               nsError.domain == FunctionsErrorDomain,
+               FunctionsErrorCode(rawValue: nsError.code) == .resourceExhausted {
+                Log.reveal.debug("Encounter blocked: caller is at the session cap")
+                return .atCap
+            }
+            Log.reveal.error("Failed to open session: \(error.localizedDescription)")
+            return .unavailable
         }
+    }
+
+    /// Why an encounter did or did not open.
+    enum SessionOpenResult: Equatable {
+        case opened
+        case alreadyOpen
+        /// The signed-in user is holding the maximum number of encounters.
+        case atCap
+        /// Anything else — including the partner being at their own cap.
+        case unavailable
     }
 
     // MARK: - Update Progress
@@ -208,16 +307,16 @@ final class RevealManager: ObservableObject {
         #endif
 
         do {
-            try await sessionsCollection.document(sessionID).updateData([
-                "revealStage": RevealStage.connected.rawValue,
-                "revealProgress": 1.0,
-                "lastUpdated": FieldValue.serverTimestamp()
-            ])
-
-            // Sync to match document
-            try await db.collection("matches").document(session.matchID).updateData([
-                "revealStage": RevealStage.connected.rawValue
-            ])
+            // One server call: the stage advance and the slot release happen in
+            // the same transaction, so they cannot disagree. A client that set
+            // 'connected' and then failed to free the slot would hold a slot on a
+            // finished encounter until the window elapsed.
+            _ = try await functions
+                .httpsCallable("closeEncounterSession")
+                .call([
+                    "sessionId": sessionID,
+                    "reason": EncounterSession.CloseReason.nameDrop.rawValue
+                ])
 
             analytics.logRevealCompleted(matchID: session.matchID)
 
@@ -240,9 +339,15 @@ final class RevealManager: ObservableObject {
 
     // MARK: - End Session
 
-    /// Ends an encounter session (timeout, user left, or report).
-    /// Does NOT delete the Firestore document — keeps audit trail.
-    func endSession(for matchID: String) async {
+    /// Ends an encounter session and frees the slot.
+    ///
+    /// The reason is required rather than defaulted. Every case frees the slot,
+    /// so the parameter changes nothing about the outcome — but "the user passed"
+    /// and "the user reported them as unsafe" are very different facts to have in
+    /// the audit trail, and a default would quietly record the wrong one.
+    ///
+    /// Does NOT delete the Firestore document — the trail is the point.
+    func endSession(for matchID: String, reason: EncounterSession.CloseReason) async {
         guard let session = activeSessions[matchID], let sessionID = session.id else { return }
 
         activeSessions.removeValue(forKey: matchID)
@@ -255,15 +360,33 @@ final class RevealManager: ObservableObject {
         #endif
 
         do {
-            // Mark session as ended by setting timeout to now (narrow write)
-            try await sessionsCollection.document(sessionID).updateData([
-                "sessionTimeout": Timestamp(date: Date()),
-                "lastUpdated": FieldValue.serverTimestamp()
-            ])
+            _ = try await functions
+                .httpsCallable("closeEncounterSession")
+                .call(["sessionId": sessionID, "reason": reason.rawValue])
 
             analytics.logRevealSessionEnded(matchID: matchID, finalStage: session.revealStage)
         } catch {
+            // The slot still frees on its own when the window elapses, so a
+            // failure here costs the user time, not a permanently held slot.
             Log.reveal.error("Failed to end session: \(error.localizedDescription)")
+        }
+    }
+
+    /// Frees every slot the signed-in user holds. Called when Quest Mode goes off.
+    ///
+    /// Someone who has stopped looking should not be occupying the other person's
+    /// slot, and should not come back later to a full cap.
+    func releaseAllSessions() async {
+        activeSessions.removeAll()
+
+        #if DEBUG
+        if isDemoMode { return }
+        #endif
+
+        do {
+            _ = try await functions.httpsCallable("releaseEncounterSessions").call()
+        } catch {
+            Log.reveal.error("Failed to release sessions: \(error.localizedDescription)")
         }
     }
 

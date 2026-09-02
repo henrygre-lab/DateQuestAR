@@ -10,6 +10,9 @@
 //     live window — the destination's server-supplied label. No neighbourhood,
 //     venue, building or geohash appears anywhere (DESIGN_SYSTEM.md §8).
 // [x] Off campus the card says so and Quest Mode cannot be started from here
+// [x] The encounter slot cap is surfaced as one line, and it is a courtesy
+//     display of a server-counted number — openEncounterSession re-counts inside
+//     a transaction, so this line can be wrong without the cap being wrong
 // [x] A lapsed Spring Break claim is surfaced, never silent. If presence stops
 //     being refreshed the pool narrows to same-school, and the banner says so —
 //     a user who believed they were still in the multi-school pool would
@@ -82,6 +85,7 @@ struct HomeView: View {
             ScrollView {
                 VStack(spacing: DQSpace.gutter) {
                     header
+                    sessionCapNotice
                     springBreakBanner
                     questCard
                     #if DEBUG
@@ -171,6 +175,42 @@ struct HomeView: View {
                 .overlay(Circle().strokeBorder(p.ember, lineWidth: 2))
         }
         .accessibilityLabel("Account menu for \(displayName)")
+    }
+
+    // MARK: - Encounter Slots
+
+    /// One line, shown only at the cap.
+    ///
+    /// Phrased as something to do rather than something that went wrong: the
+    /// user is not blocked, they are holding two encounters and the way forward
+    /// is to finish one. A count ("2 of 2") would be accurate and useless.
+    @ViewBuilder
+    private var sessionCapNotice: some View {
+        if matchManager.isAtSessionCap {
+            HStack(alignment: .top, spacing: DQSpace.tight) {
+                Image(systemName: "person.2.slash")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(p.text2)
+
+                Text("Finish or pass your current quests to meet someone new.")
+                    .font(DQFont.bodyS)
+                    .foregroundStyle(p.text2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Spacer(minLength: 0)
+            }
+            .padding(DQSpace.card)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: DQRadius.card, style: .continuous).fill(p.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: DQRadius.card, style: .continuous)
+                    .strokeBorder(p.line, lineWidth: 1)
+            )
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Finish or pass your current quests to meet someone new.")
+        }
     }
 
     // MARK: - Spring Break
