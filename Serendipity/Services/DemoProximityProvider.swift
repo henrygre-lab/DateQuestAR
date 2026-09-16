@@ -54,7 +54,8 @@ final class DemoProximityProvider: ObservableObject {
         onUpdate(distanceMiles)
 
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.tick() }
+            guard let self else { return }
+            Task { @MainActor in self.tick() }
         }
     }
 

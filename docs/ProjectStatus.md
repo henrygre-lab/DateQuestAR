@@ -10,16 +10,18 @@
 - [ ] Not run on device or simulator since the UI rework — see below
 - [ ] **Unit tests cannot be run from a clean checkout** — see below
 
-Two warnings survive the build. The first is deliberate: `OpenURLOptionsKey` is
-deprecated in iOS 26, and migrating off it means moving URL handling into a scene
-delegate on the auth-critical Google Sign-In path. The call site carries a comment
-saying so.
+One warning survives the build, deliberately: `OpenURLOptionsKey` is deprecated
+in iOS 26, and migrating off it means moving URL handling into a scene delegate
+on the auth-critical Google Sign-In path. The call site carries a comment saying
+so. Everything else is clean.
 
-The second is not deliberate and is new since August:
-`Services/DemoProximityProvider.swift:57` captures `self` in concurrently-executing
-code inside the timer closure. It is a warning today and **an error under the
-Swift 6 language mode**, so it will block that migration. It arrived with
-`c9f4097` and sits on the `#if DEBUG` demo path, which is why nothing caught it.
+A second warning was found on September 16 and fixed the same day:
+`Services/DemoProximityProvider.swift:57` captured `self` in concurrently-executing
+code inside the timer closure — a warning today and **an error under the Swift 6
+language mode**, so it would have blocked that migration. It arrived with
+`c9f4097` and sat on the `#if DEBUG` demo path, which is why nothing caught it.
+The timer closure now binds `self` with `guard let` before the `Task`, so the
+`Task` captures an immutable binding rather than the mutable weak optional.
 
 ### The test suite does not run without Firebase credentials
 
@@ -264,8 +266,9 @@ Full detail — including everything deferred and why — is in
    touching `RadarView`.
 4. Add mock fixtures + SwiftUI previews so v2 surfaces can be iterated without a
    Firebase sign-in.
-5. Fix the Swift 6 concurrency warning in `DemoProximityProvider.swift:57` before
-   it becomes a migration blocker.
+5. ~~Fix the Swift 6 concurrency warning in `DemoProximityProvider.swift:57`.~~
+   **Closed September 16.** The build is now clean but for the deliberate
+   `OpenURLOptionsKey` deprecation.
 6. Define a quest content model — the QuestCard is specced around one that does
    not exist.
 7. Design messaging, then wire `ConnectedChatView` and restore `Say hello`.
