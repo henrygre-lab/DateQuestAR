@@ -1,17 +1,40 @@
-# Serendipity — Project Status (August 5, 2026)
+# Serendipity — Project Status (September 16, 2026)
 
 ## Build Status
-- [x] Clean build succeeds against the iOS 26.5 SDK (verified August 5)
-- [x] All Firebase modules resolved
+- [x] Clean build succeeds against the iOS 26.5 SDK (re-verified September 16,
+      iPhone 17 Pro simulator, exit 0)
+- [x] All Firebase modules resolved (Firebase 12.12.1)
 - [x] Info.plist + Signing + @main entry point correct
 - [x] AlertCapManager, BalanceEnforcer, and core safety features compile
-- [x] Waves 1–2 of the rework are committed (`8891383`, July 29)
+- [x] Cloud Functions typecheck clean (`tsc --noEmit`)
 - [ ] Not run on device or simulator since the UI rework — see below
+- [ ] **Unit tests cannot be run from a clean checkout** — see below
 
-One warning survives the build, deliberately: `OpenURLOptionsKey` is deprecated
-in iOS 26, and migrating off it means moving URL handling into a scene delegate
-on the auth-critical Google Sign-In path. The call site carries a comment saying
-so. Everything else is clean.
+Two warnings survive the build. The first is deliberate: `OpenURLOptionsKey` is
+deprecated in iOS 26, and migrating off it means moving URL handling into a scene
+delegate on the auth-critical Google Sign-In path. The call site carries a comment
+saying so.
+
+The second is not deliberate and is new since August:
+`Services/DemoProximityProvider.swift:57` captures `self` in concurrently-executing
+code inside the timer closure. It is a warning today and **an error under the
+Swift 6 language mode**, so it will block that migration. It arrived with
+`c9f4097` and sits on the `#if DEBUG` demo path, which is why nothing caught it.
+
+### The test suite does not run without Firebase credentials
+
+The XCTest host is the app itself. `AppDelegate.configureFirebase()` skips
+`FirebaseApp.configure()` when no `GoogleService-Info.plist` is bundled — but
+every `.shared` manager builds a Firestore handle eagerly
+(`MatchManager.shared → AlertCapManager.shared → FirestoreService.shared`), so
+the app aborts in `+[FIRFirestore firestore]` before the runner connects.
+
+`Resources/SETUP.md` documents this, so it is a known setup requirement rather
+than a defect. The consequence is worth stating plainly anyway: **the 76 unit
+tests in `SerendipityTests.swift` cannot be executed from a fresh clone, and
+cannot run in CI, until the test host can boot against the emulator.** Any claim
+that they pass is a claim about a developer machine with real credentials on it.
+That is now a prerequisite for step 0 rather than a separate chore.
 
 ## Latest: Liquid Glass + logging (August 5)
 
@@ -41,7 +64,7 @@ except the two noted as still open.
 | 02 | `signIn` assigned Firebase's `localizedDescription` straight to the UI, which distinguishes `.userNotFound` from `.wrongPassword` — an account-enumeration oracle on the login form. The file's own compliance block claimed the opposite | **Fixed** — one message for both |
 | 02 | `SafetyVerifier.reportUser` and the verification `catch` rendered raw backend error text; `deleteAccount` and `signOut` did the same | **Fixed** — generic copy, detail to the log |
 | 04 | The AR session was never explicitly paused or torn down. ARKit interrupts itself on background, so no camera was left open, but nothing stopped the session when the radar was dismissed and the rule was satisfied only by inheritance | **Fixed** — explicit pause/resume + `dismantleUIView` |
-| 01 | Dependencies had never been audited: 20 advisories, 2 critical, 3 high | **Fixed** for critical/high; 9 moderate remain, all requiring major bumps of `firebase-admin` and `firebase-functions` |
+| 01 | Dependencies had never been audited: 20 advisories, 2 critical, 3 high | **Fixed** for critical/high; 9 moderate remained as of this audit, all requiring major bumps of `firebase-admin` and `firebase-functions`. Re-checked September 16: still no critical/high, but **12 moderate** now |
 | 03/05 | `grantXP` documented its clamp as "server-side". It runs on the client, in a client-side transaction anyone can bypass | **Fixed** — comment now says advisory, like `AlertCapManager` |
 | 04 | `NSFaceIDUsageDescription` missing while `LocalAuthentication` ships. Would crash the moment Face ID is wired | **Fixed** |
 | — | `UIRequiredDeviceCapabilities` was `armv7` — 32-bit ARM, which no iOS 26 device has | **Fixed** → `arm64` |
@@ -79,10 +102,13 @@ only one carrying the gender-balance machinery.
   `studentIdVerification.ts` (server-side face match; deletes the artefacts once
   the outcome is recorded), `intents.ts` (intents + the 24h Dating-off cooldown).
   `balanceMonitor.ts` is now per-school and counts Dating-gated users only.
-- **Spring Break Mode**: the one exception to same-school. Server-dated windows,
+- **Spring Break Mode**: the one pool that is not a campus. Server-dated windows,
   dual server-confirmed presence, verified students only, 45-minute claim TTL.
-- **48 unit tests**, all passing, covering the three gates, the same-school
-  predicate, the intent lock, the cooldown and the fail-closed decoders.
+- **48 unit tests** covering the three gates, the same-school predicate, the
+  intent lock, the cooldown and the fail-closed decoders. (Now 76, after the
+  four commits below. They were passing on a machine with Firebase credentials;
+  see the Build Status caveat above for why that is not reproducible from a
+  clean checkout.)
 
 **What this cost**
 
@@ -93,15 +119,74 @@ only one carrying the gender-balance machinery.
 - `VerificationStepView` was deleted — it described a driver's licence or
   passport scan, which is no longer the flow. `StudentIDStepView` replaces it.
 - `GamificationService.awardXP(uid:)` and `ReferralManager.processReferralReward`
-  write another user's document. The rules now correctly deny that, so **those
-  paths are broken until they move server-side.** This is a real regression and
-  it is deliberate: a client-writable XP counter is a free XP faucet.
+  write another user's document. The rules now correctly deny that, so those
+  paths were broken until they moved server-side. **Closed on September 2** —
+  see below.
 
 **What is unproven**
 
 The rules have never been executed. There is no Firebase CLI in this environment,
 so no `firebase emulators:exec` and no rules unit tests. Everything above is
-reasoned and reviewed, not run. That is the top item on the list below.
+reasoned and reviewed, not run. That is still the top item on the list below,
+and it has not moved since the pivot landed.
+
+## After the pivot (September 2, same day)
+
+Four commits landed after the pivot documentation was written. Two closed items
+this document had listed as open; two added scope.
+
+**Closed**
+
+- **XP and referral rewards moved into Cloud Functions** (`207b21a`) — closes
+  step 4 below. Self-service grants go through an `awardXP` callable that takes
+  no recipient (it always writes `request.auth.uid`) and no amount (the table is
+  server-side), so a grant to someone else is not expressible. Referral and
+  waitlist-survivor rewards get no callable at all — `activateWaitlistedUsers`
+  already runs on a schedule and already knows who was activated. Two duplicate
+  XP tables were deleted along the way. `recordDailyLogin` stays a client-side
+  self-write and now carries a TODO saying it is the one grant the server-side
+  clamp does not cover.
+- **The Spring Break claim now refreshes** (`643a715`) — closes the
+  carried-over item below. `LocationService` re-confirms presence every 15
+  minutes while Quest Mode is on and the device is still in the fence; each
+  refresh is the same round-trip that issued the claim, so it cannot extend
+  presence the user no longer has. When it cannot be refreshed, presence is
+  released server-side and `springBreakStatus` becomes `.paused`, which Home and
+  Radar surface. `SpringBreakStatus` is deliberately a separate type from
+  `CommunityScope`: the scope decides who you may see, the status decides what
+  the screen says, and the gate does not read it.
+
+**Added**
+
+- **A user may hold at most two active encounter sessions** (`7d6faee`).
+  `firestore.rules` cannot count across documents, so client creates on
+  `encounter_sessions` are denied outright and `openEncounterSession` does the
+  count and the write in one transaction. A slot is occupied only while the
+  session is active *and* inside its 10–15 minute window, so a timeout needs no
+  write and an abandoned encounter strands nobody at the cap. A session costs a
+  slot for both participants. Only the caller's own cap is named in the error —
+  telling A that B is mid-encounter is a fact about B's evening that B did not
+  choose to share.
+- **Campus visiting — the Big Game rule** (`ff3bf78`). A school-verified student
+  standing on another allowlisted campus can Quest there, seeing that campus's
+  home students and its other confirmed visitors. It reuses the
+  destination-presence mechanism rather than inventing a second one: same claim
+  shape, same 15-minute refresh, same explicit pause, pointed at a `schools/{id}`
+  fence. `CommunityScope` did **not** gain a fourth case — `.campus(schoolId)`
+  now means "the pool present on that campus", and `isPresent(onCampus:)` carries
+  the two asymmetric branches (home `schoolId`, or a different one plus a live
+  `campusPresence` claim).
+
+  Two consequences worth keeping in view. The nearby query became two queries and
+  a union, because Firestore has no disjunction across two fields. And only the
+  home campus gets a monitored `CLCircularRegion` — iOS caps an app at 20, which
+  a national school list would exhaust on its own — so visiting campuses are
+  detected by containment on location updates, meaning walking onto another
+  campus with the app asleep is noticed on the next update rather than instantly.
+
+> **Documentation note.** These four commits shipped without updating this file
+> or the README, which is how the README came to state the cross-campus rule
+> wrongly for two weeks on a public repo. Corrected September 16.
 
 ## Current phase: DesignSystem v2 UI rework
 
@@ -110,7 +195,7 @@ from the design handoff. Functionality is unchanged throughout: the reveal
 mechanic, stage machine, trust ladder and `#if DEBUG` demo path all behave
 exactly as before.
 
-**28 of 48 view files are now on v2; 17 still read `enum DQ`.** The three new
+**30 of 45 view files are now on v2; 15 still read `enum DQ`.** The three new
 campus surfaces (`SchoolGateView`, `StudentIDStepView`, `StudentIDPendingView`)
 were written on v2.
 
@@ -154,30 +239,37 @@ Full detail — including everything deferred and why — is in
 
 0. **Execute the security rules.** They are the enforcement boundary for the
    entire campus gate and they have never run. Install the Firebase CLI, add
-   `@firebase/rules-unit-testing` cases for the same-school predicate, the
-   server-owned-field rejections and the cross-school Spring Break path, and put
-   them in CI. Until this happens the gate is reviewed, not verified.
-1. **Run it.** This is now the only thing standing between the rework and
-   confidence, and it has been the top item for two waves running. Nothing has
-   been exercised at runtime: the floating tab bar's safe-area handling, the
-   QuestCard sweep timing, the width-scaled thumbnail blur, the step dots, the
-   blocking-save overlay — and now the glass, which is the kind of change that
-   can only be judged on a device. See `UI_REWORK_STATUS.md` §6 for the specific
-   things to look at.
-2. Migrate the 17 remaining `enum DQ` readers, then delete it. Three design calls
+   `@firebase/rules-unit-testing` cases for the campus-presence predicate (home
+   *and* visiting branches), the server-owned-field rejections and the
+   cross-school Spring Break path, and put them in CI. Until this happens the
+   gate is reviewed, not verified. **This has been item 0 since September 2 and
+   has not moved.** The campus-visiting commit widened what the rules have to get
+   right without adding a single executed test, so the gap is larger now than
+   when it was written.
+1. **Make the test host bootable without real credentials**, then run the 76
+   tests. This is a hard prerequisite for putting anything in CI, including
+   step 0 — the suite currently cannot run on any machine that lacks a
+   `GoogleService-Info.plist`. Either check in an emulator config, or make the
+   eager `FirestoreService.shared` construction lazy so the app can launch
+   un-configured.
+2. **Run it.** Nothing has been exercised at runtime: the floating tab bar's
+   safe-area handling, the QuestCard sweep timing, the width-scaled thumbnail
+   blur, the step dots, the blocking-save overlay — and the glass, which is the
+   kind of change that can only be judged on a device. See
+   `UI_REWORK_STATUS.md` §6 for the specific things to look at.
+3. Migrate the 15 remaining `enum DQ` readers, then delete it. Three design calls
    need answering first — Radar, the camera overlay (now half-answered: controls
    take glass, the prompt text is still unruled), and OAuth brand marks; see
    `UI_REWORK_STATUS.md` §7. Read the `RadarScreenV2` mock into spec §6 before
    touching `RadarView`.
-3. Add mock fixtures + SwiftUI previews so v2 surfaces can be iterated without a
+4. Add mock fixtures + SwiftUI previews so v2 surfaces can be iterated without a
    Firebase sign-in.
-4. Move `GamificationService.awardXP(uid:)` and the referral reward path into
-   Cloud Functions. The rules deny them now, so they are broken, not merely
-   advisory.
-5. Define a quest content model — the QuestCard is specced around one that does
+5. Fix the Swift 6 concurrency warning in `DemoProximityProvider.swift:57` before
+   it becomes a migration blocker.
+6. Define a quest content model — the QuestCard is specced around one that does
    not exist.
-6. Design messaging, then wire `ConnectedChatView` and restore `Say hello`.
-7. **Optional: shrink the repo's history.** `functions/node_modules/` is no
+7. Design messaging, then wire `ConnectedChatView` and restore `Say hello`.
+8. **Optional: shrink the repo's history.** `functions/node_modules/` is no
    longer tracked (August 5) — it was 8,847 of 8,973 tracked files, kept alive
    only because it predated the `.gitignore` rule. Untracking stops the growth
    but leaves the old blobs in past commits, so a fresh clone is still large.
@@ -190,10 +282,15 @@ Full detail — including everything deferred and why — is in
 - Firestore Security Rules are written and cover alert-adjacent server-owned
   fields; client caps remain advisory by design, with the rules as the boundary.
   Unexecuted — see step 0.
-- The Spring Break `sbDest` claim has a 45-minute TTL that nothing re-confirms on
-  a timer, so a user standing at a destination for over 45 minutes silently drops
-  back to same-school until the next region crossing.
+- ~~The Spring Break `sbDest` claim has a 45-minute TTL that nothing
+  re-confirms.~~ **Closed September 2** (`643a715`) — the same 15-minute refresh
+  now covers both the destination and campus-visiting claims.
 - `ProximityService` UWB/BLE events not yet wired into
   `MatchManager.handleNearbyEvent`.
+- Motion and altitude filtering still do not exist — no `CMMotionActivityManager`,
+  no `CMAltimeter`. Vertical density and vehicle noise remain unmitigated, and
+  both are stated as *proposals* in `EDGE_CASES_AND_OBJECTIONS.md`.
+- Coordinated bad-actor / group anomaly detection is still a `SafetyVerifier`
+  stub. `LAUNCH_STRATEGY.md` names it a non-negotiable before any marketing push.
 - AI preference alignment (dimension 4) still a distance-tolerance check.
 - Apple Sign-In stubbed pending paid Developer Program enrollment.

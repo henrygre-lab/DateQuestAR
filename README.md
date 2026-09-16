@@ -1,10 +1,10 @@
 # Serendipity
 
-**Serendipity is not a dating app.** It is a campus proximity app: it tells you when someone from *your school* is nearby and worth walking over to, and it only reveals who they are as the two of you physically close the distance.
+**Serendipity is not a dating app.** It is a campus proximity app: it tells you when another verified student on *the campus you are standing on* is nearby and worth walking over to, and it only reveals who they are as the two of you physically close the distance.
 
 Five intents — **Hangout, Study, Friendship, Event, Dating** — sit side by side. Home defaults to Hangout and Study. Dating is optional, off unless you pick it, and the only one that carries the gender-balance machinery.
 
-Everything runs inside a verified campus geofence. Off campus, Quest Mode pauses. Cross-campus matching does not exist, with exactly one exception: a live, server-dated Spring Break destination, where verified students from any allowlisted school can see each other for the length of the window and no longer.
+Everything runs inside a verified campus geofence. Off campus, Quest Mode pauses. The pool is always *one campus at a time* — never a city, never a national feed — and you are in it only if the server can confirm you are standing on that campus: as a home student, or as a verified student from another allowlisted school who is actually there. The one pool that is not a campus is a live, server-dated Spring Break destination, where verified students from any allowlisted school can see each other for the length of the window and no longer.
 
 ---
 
@@ -16,8 +16,10 @@ Everything runs inside a verified campus geofence. Off campus, Quest Mode pauses
 | **Student ID + Liveness** | A student ID card photo and a liveness check are required *before* Quest Mode. Deliberately stricter than Fizz: an `.edu` address gets you into the community, not into proximity scanning. |
 | **Intents** | Hangout, Study, Friendship, Event, Dating. Dating requires the student ID ↔ liveness face match and a verified adult age; the other four need only the student ID. |
 | **Quest Mode** | Background location scanning inside the campus geofence. Haptic feedback ramps in intensity as a compatible match closes distance (0.25 mi → 0.0 mi). Auto-pauses off campus, and inside user-defined zones (home, work, etc.). |
-| **Spring Break Mode** | Colleges travel to the same handful of places, so the product follows them. Inside a live, server-dated destination fence, the pool widens to verified students from *any* allowlisted school — UCLA can see Michigan. Locals and unverified tourists cannot appear. When the window closes or you leave the fence, it snaps back to same-school. |
+| **Campus Visiting** | The Big Game rule. A school-verified student standing on *another* allowlisted campus can Quest there: they see that campus's home students and its other confirmed visitors, and both see them. Authorised by a live, expiring `campusPresence` claim that `confirmCampusPresence` issues only after re-decoding the device geohash against that school's own centre and radius. Only the home campus gets a monitored `CLCircularRegion` — iOS caps an app at 20 — so visiting campuses are detected by containment on location updates. |
+| **Spring Break Mode** | Colleges travel to the same handful of places, so the product follows them. Inside a live, server-dated destination fence, the pool widens to verified students from *any* allowlisted school — UCLA can see Michigan. Locals and unverified tourists cannot appear. When the window closes or you leave the fence, it snaps back to the campus pool. |
 | **Progressive Photo Reveal** | Photos unlock in four stages tied to physical proximity and shared interaction — no upfront visual judgment. |
+| **Two Active Encounters** | A user can hold at most two encounter sessions at once, across every intent. Server-authoritative: `firestore.rules` cannot count across documents, so client creates on `encounter_sessions` are denied outright and `openEncounterSession` does the count and the write in one transaction. A slot frees itself when the session's 10–15 minute window lapses, so an abandoned encounter strands nobody at the cap. A session costs a slot for **both** participants, so a popular user cannot be pulled past their own limit by other people. |
 | **AR Icebreakers** | Four challenge types (Trivia, Gesture, AR Object, Word Association) fire when users are in proximity. Completing one advances the photo reveal. |
 | **AI Compatibility Scoring** | 0.0–1.0 score across interest overlap, relationship type, age compatibility, and preference alignment before any alert fires. Default match threshold: **0.80**. |
 | **Asymmetric Alert Caps** | Gender-aware daily caps (women: 10, non-binary: 20, men: 40) — applied **only** to Dating-gated encounters. A Study or Hangout match is never gender-throttled. Client-side caps are advisory; `firestore.rules` is the authoritative gate. |
@@ -38,13 +40,16 @@ Everything runs inside a verified campus geofence. Off campus, Quest Mode pauses
                └── .verified opens Quest Mode; .faceMatched opens Dating + NameDrop
 
 1. Quest Mode active, inside the campus geofence
-   └── Someone from the SAME school enters the 0.25 mi radius
+   └── Someone else present on THIS campus enters the 0.25 mi radius
+       (home student, or a confirmed visitor from another allowlisted school)
          └── CommunityGate.canShare → shared intent → (Dating only:
              AlertCapManager + BalanceEnforcer)
                └── Both phones alert (haptics, vibe badges — NO photos yet)
 
 2. Users physically approach
-   └── EncounterSession opens (10–15 min, persists even if users briefly drift apart)
+   └── openEncounterSession — both sides re-checked server-side, and both must
+       have a free slot (max 2 active sessions per user)
+         └── EncounterSession opens (10–15 min, persists even if users briefly drift apart)
          └── AR icebreaker activates
                └── Photo progressively unblurs as challenge progresses (revealProgress 0.0 → 1.0)
 
@@ -69,15 +74,19 @@ Each reads only server-issued fields, and each is re-checked by `firestore.rules
 
 `canNameDrop` sits alongside gate 3: the face match, but not the age check, because NameDrop is reachable on a Study encounter too.
 
-### Same-school rule, and its single exception
+### One campus at a time, and the two ways into a pool
 
 `CommunityScope` is the one place the rule lives:
 
-- **`.campus(schoolId)`** — both parties must belong to *that* school. A Michigan student standing on the UCLA lawn is out of pool.
-- **`.springBreak(destinationId, displayLabel)`** — inside a live, server-dated window, and only once the backend has confirmed *both* parties are at that destination. School-verified students only; locals and unverified tourists match no branch.
-- **`.none`** — off campus and outside every live fence. Quest Mode pauses; every query returns empty.
+- **`.campus(schoolId)`** — the pool of everyone present on *that* campus. `CommunityGate.canShare` requires `isPresent(onCampus:)` of **both** parties, which has two branches and they are deliberately asymmetric:
+  - **Home.** Your own `schoolId` is this campus. No presence claim — requiring one would break every student standing on their own quad, and `schoolId` already says they belong.
+  - **Visiting.** A *different* `schoolId`, plus a live, expiring `campusPresence` claim on this campus, issued by `confirmCampusPresence` only after the server re-decodes the device geohash against the school document's own centre and radius. This is the Big Game rule: a Stanford student actually at Cal is in pool; one who merely says they are is not. Standing somewhere is necessary and never sufficient — the caller must already be Quest-eligible.
+- **`.springBreak(destinationId, displayLabel)`** — the one pool that is not a campus. Inside a live, server-dated window, and only once the backend has confirmed *both* parties are at that destination. School-verified students only; locals and unverified tourists match no branch.
+- **`.none`** — off every campus fence and outside every live destination window. Quest Mode pauses; every query returns empty.
 
-Rules cannot see device location, so they cannot verify physical presence. They enforce school membership, verification depth, the server-dated window, and server-confirmed destination presence (via the short-lived `sbDest` claim that `confirmDestinationPresence` issues after re-checking the fence itself). Physical presence is enforced by `LocationService` auto-pause and by that same function. This limitation is stated in the rules file rather than papered over.
+Both presence claims expire and are re-confirmed on a 15-minute timer while Quest Mode is on. A lapsed claim simply stops qualifying — `isPresent(onCampus:)` checks the expiry, so nothing has to clear it and no write is needed.
+
+Rules cannot see device location, so they cannot verify physical presence. They enforce school membership, verification depth, the server-dated window, and server-confirmed presence (via the short-lived `campusPresence` and `sbDest` claims that `confirmCampusPresence` and `confirmDestinationPresence` issue after re-checking the fence themselves). Physical presence is enforced by `LocationService` auto-pause and by those same functions. Rules can also only vouch for the *caller*, so `openEncounterSession` does the authoritative both-sides check — the caller from their claims, the partner from their profile. This limitation is stated in the rules file rather than papered over.
 
 ### Encounter Session Detail
 
@@ -200,8 +209,8 @@ These are design constraints, not afterthoughts. Each decision maps to a specifi
 - **Nothing identifying reaches the device log.** All logging goes through `Utilities/Log.swift`, which hands messages to `os.Logger` marked `.private` — readable when attached to Xcode or Console, redacted in any log a shipping build hands out. This replaced 55 `print` calls, which were not compiled out of release builds and between them carried a user's geohash, a match's display name and a reported user's uid.
 
 **Campus Community**
-- Every nearby, match, icebreaker and NameDrop path hard-gates on `schoolId`. There is no cross-campus matching outside a live Spring Break window.
-- `firestore.rules` evaluates its read predicate per document on a list query, so a nearby query that reaches beyond the caller's own community **fails as a whole** rather than returning a filtered set. That is what makes the same-school rule enforceable rather than advisory.
+- Every nearby, match, icebreaker and NameDrop path hard-gates on `schoolId`. The pool is never wider than one campus, except inside a live Spring Break window. A student from another school enters a campus pool only while holding a live, server-issued `campusPresence` claim for it — which the server grants only after re-checking the device geohash against that campus's fence, and which expires on its own.
+- `firestore.rules` evaluates its read predicate per document on a list query, so a nearby query that reaches beyond the caller's own community **fails as a whole** rather than returning a filtered set. That is what makes the campus predicate enforceable rather than advisory.
 - Off campus and outside every live fence, `CommunityScope` is `.none`: Quest Mode pauses, the pool empties, and the Home screen says so rather than showing an empty list.
 - Cross-school visibility during Spring Break requires four things at once: a live server-dated window, the viewer server-confirmed at that destination, the subject confirmed at the *same* destination, and both school-verified.
 
@@ -288,26 +297,26 @@ Fonts are bundled in `Serendipity/Resources/Fonts` and registered via `UIAppFont
 
 ## Known Limitations / Current Scope
 
-These are deliberate next steps, not gaps — the campus gate, the same-school rule and the proximity-reveal-AR loop are implemented end to end.
+These are deliberate next steps, not gaps — the campus gate, the one-campus-at-a-time pool rule and the proximity-reveal-AR loop are implemented end to end.
 
 | Area | Current State | Next Step |
 |---|---|---|
-| UI rework | 28 of 48 view files on v2 — all 6 handoff surfaces, the Settings and Onboarding trees, and the new `SchoolGateView` / `StudentIDStepView` / `StudentIDPendingView` | Migrate the 17 remaining v1 files, delete `enum DQ`, then drop the theme pin and go `colorScheme`-driven |
+| UI rework | 30 of 45 view files on v2 — all 6 handoff surfaces, the Settings and Onboarding trees, and the new `SchoolGateView` / `StudentIDStepView` / `StudentIDPendingView` | Migrate the 15 remaining v1 files, delete `enum DQ`, then drop the theme pin and go `colorScheme`-driven |
 | Messaging | `ConnectedChatView` is built but there is **no `Message` model, collection, or send path** | Design messaging; then wire the view and restore the stage-4 `Say hello` CTA |
 | Safety actions | *End encounter* and *Report* work; *Share live location* and *Check in later* have no backing feature and ship visibly unavailable | Build a live-location link service and a check-in scheduler |
-| Spring Break check-in trigger | `confirmDestinationPresence` and the fence detection are built and wired into `LocationService.reevaluateScope`. The `sbDest` claim has a 45-minute TTL, but **nothing re-confirms it before it lapses** — a user standing at a destination for an hour silently drops back to same-school until the next region crossing | Add a timer that re-confirms presence at half the TTL while the scope is `.springBreak` |
+| Spring Break check-in trigger | **Closed.** `LocationService` re-confirms presence every 15 minutes while Quest Mode is on and the device is still inside the fence; each refresh is the same round-trip that issued the claim, so it cannot extend presence the user no longer has. When it cannot be refreshed, presence is released server-side and `springBreakStatus` becomes `.paused`, which Home and Radar surface rather than failing silently | — |
 | Live rules verification | `firestore.rules` and `storage.rules` are written but have **never been executed** — no Firebase CLI in this environment, so no `firebase emulators:exec` and no rules unit tests | Install the CLI, add `@firebase/rules-unit-testing` cases for the same-school predicate and the server-owned-field rejections, and run them in CI |
-| Cross-user XP writes | `GamificationService.awardXP(uid:)` and `ReferralManager.processReferralReward` write another user's document. `firestore.rules` now correctly denies that — the paths are broken until they move server-side | Move XP grants and referral rewards into Cloud Functions |
+| Cross-user XP writes | **Closed.** Self-service grants go through an `awardXP` callable that takes no recipient (it always writes `request.auth.uid`) and no amount (the table is server-side). Referral and waitlist-survivor rewards are issued by `activateWaitlistedUsers`, which already knows who was activated. `GamificationService` no longer holds a Firestore handle, so a cross-user write is not expressible | `recordDailyLogin` remains a client-side self-write and is the one grant the server-side clamp does not cover |
 | Enrollment proof review | `submitEnrollmentProof` queues a review and `reviewEnrollmentProof` is admin-only, but there is no admin surface to call it from | Build the review tool, or wire it to an existing admin console |
 | Quest content model | Quest Mode is a `Bool`; no quest title, description, or `n / m` progress exists | Define a quest model so the QuestCard can carry real quest content |
 | Dynamic Type | Neither design system scales with Dynamic Type | Audit both layers and adopt scaled fonts |
-| Runtime verification | Builds clean against the iOS 26.5 SDK and the 48 unit tests pass. **No v2 surface has been run**, on device or in Simulator, and the Liquid Glass work has never been looked at. The test host itself needs a `GoogleService-Info.plist` to launch — without one it crashes before the tests connect | Add a checked-in emulator config so the test host boots without real Firebase credentials; add mock fixtures and SwiftUI previews |
+| Runtime verification | Builds clean against the iOS 26.5 SDK (verified 2026-09-16, iPhone 17 Pro simulator). 76 unit tests are written. **No v2 surface has been run**, on device or in Simulator, and the Liquid Glass work has never been looked at. The test host is the app itself and needs a `GoogleService-Info.plist` to launch — without one it aborts in `+[FIRFirestore firestore]` before the tests connect, so the suite cannot run from a clean checkout and cannot run in CI as it stands | Add a checked-in emulator config so the test host boots without real Firebase credentials; add mock fixtures and SwiftUI previews |
 | ProximityService wiring | UWB/BLE service implemented; not yet connected to MatchManager trigger path | Wire `ProximityService` events into `MatchManager.handleNearbyEvent` |
 | AI preference alignment | Dimension 4 (preference alignment) uses distance-tolerance check only | Expand with dealbreaker logic and ML model |
 | Apple Sign-In | Stub implemented | Requires paid Apple Developer Program enrollment |
-| Firestore Security Rules | **Closed.** `firestore.rules` and `storage.rules` now carry the same-school predicate, the server-owned field list, the write-only verification prefix and the reveal-stage gate. See *Live rules verification* above for what is still unproven | Move the remaining client-side XP and trust writes behind Cloud Functions |
+| Firestore Security Rules | **Closed.** `firestore.rules` and `storage.rules` now carry the campus-presence predicate, the server-owned field list, the write-only verification prefix and the reveal-stage gate. See *Live rules verification* above for what is still unproven | Execute them — that row is the blocker, not this one |
 | Motion / altitude filtering | Not implemented — no `CMMotionActivityManager`, no `CMAltimeter`. Vertical density and vehicle noise are unmitigated | Build the walking/running gate and the altitude check described in `EDGE_CASES_AND_OBJECTIONS.md` |
-| Cloud Functions dependencies | `npm audit` clean of critical/high as of 2026-08-05; 9 moderate advisories remain, all needing a major bump of `firebase-admin` (→14) and `firebase-functions` (→7) | Take the majors deliberately, with a deploy to the emulator to catch API breakage |
+| Cloud Functions dependencies | `npm audit` clean of critical/high as of 2026-09-16; **12** moderate advisories remain (up from 9 in August), all needing a major bump of `firebase-admin` (→14) and `firebase-functions` (→7). `tsc --noEmit` is clean | Take the majors deliberately, with a deploy to the emulator to catch API breakage |
 | AR Icebreaker views | Challenge types defined and dispatched; AR Object + Gesture views in progress | Complete ARKit placement views for all four types |
 | Post-meet rating pipeline | Rating flow integrated into trust score recalculation, but the client no longer writes `trustLevel` (it is server-owned), so recalculation is now display-only | Build rating UI and the Cloud Function that actually applies the tier change |
 | Vibe filter vs. intents | The 0.6 Jaccard `intentVibes` pre-filter still gates every match, including Study ones. It predates intents and is a second, overlapping notion of "what you're here for" | Decide whether vibes survive intents, and if so scope the threshold per intent |
