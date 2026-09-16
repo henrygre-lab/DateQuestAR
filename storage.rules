@@ -1,0 +1,58 @@
+rules_version = '2';
+
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
+// [x] No hardcoded secrets
+// [x] Student ID card photos and liveness frames are write-only from the client
+//     and read-only to Cloud Functions — no client, including the owner, can read
+//     them back, so they cannot be surfaced on a profile or in a nearby payload
+// [x] Verification artefacts live under verification/{uid}/, never under
+//     users/{uid}/photos/ — the two prefixes have opposite read rules
+// [x] Profile photos remain readable only to signed-in users; the reveal gating
+//     itself is enforced in Firestore, not here
+// [x] Content type and size are constrained on every upload path
+// [x] Default deny on every other path
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isImageUnder(maxBytes) {
+      return request.resource.contentType.matches('image/.*')
+        && request.resource.size < maxBytes;
+    }
+
+    // MARK: Profile photos
+    // Path matches FirestoreService.uploadPhoto: users/{uid}/photos/photo_N.jpg.
+    // Progressive reveal is enforced by Firestore (RevealStage), not by Storage —
+    // a URL here is not a permission.
+    match /users/{uid}/photos/{photoId} {
+      allow read: if isSignedIn();
+      allow write: if isSelf(uid) && isImageUnder(8 * 1024 * 1024);
+    }
+
+    // MARK: Verification artefacts
+    // Student ID card photo and retained liveness frames.
+    //
+    // Write-only, deliberately: the owner uploads and can never read back, and
+    // no other client can read at all. Only the Admin SDK (studentIdVerification.ts)
+    // reads these objects. That is what makes "a student ID image can never appear
+    // on a profile" a property of the system rather than a promise in the client.
+    match /verification/{uid}/{artefactId} {
+      allow read: if false;
+      allow create: if isSelf(uid) && isImageUnder(12 * 1024 * 1024);
+      allow update, delete: if false;
+    }
+
+    // MARK: Default deny
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

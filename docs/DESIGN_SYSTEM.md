@@ -349,6 +349,13 @@ A disabled primary pill is a dead end; a pill that reports distance is part of t
 
 **Never render a place name derived from the user's position.** The mock's subtitle reads "Mission district · 6 signals near"; the neighbourhood must not ship. Naming where the user is standing is exactly the location exposure this product exists to avoid — and it appears on the least-protected screen in the app. Ship the count alone. This generalises: no neighbourhood, city, venue or landmark inferred from location, anywhere.
 
+**Two strings are exempt, and only two.** Both are *identity*, not position — they say which community you are in, not where you are standing.
+
+1. **The school's display name**, read from `schools/{schoolId}.displayName`. "Quest Mode · UCLA" ships. It is the same fact for a student sitting in the library and one in a lecture hall a mile away, so it localises nobody. On a campus product it is also the most important thing on the screen: it is the promise that the people you are about to see are your classmates.
+2. **A Spring Break destination's `displayLabel`**, read from `spring_break_destinations/{id}.displayLabel`. "Cancún · Spring Break" ships. It is a server-authored label for a time-boxed event, not a description of the user's position — everyone inside a live window sees the identical string, and it names the event rather than the person.
+
+Everything else still goes: neighbourhood, city, venue, building, hall, room, and the geohash and campus polygon that back the geofences. If a string could be different for two people standing 500 m apart, it is position, and it does not ship.
+
 **Quest Mode toggle.** The mock's card is a display; in implementation it is also the app's only on/off control. Place the toggle top-right of the card with the radar pulse beneath it, and make sure the inactive card treatment above is applied — a card that looks identical when off is a bug.
 
 **Signal cards degrade gracefully.** The mock's primary line is distance ("40 m away"). If per-user distance is not available outside debug, promote vibe match to the primary line and keep the glass tier chip; drop the line entirely when no match record backs a profile. Do not approximate a distance.
@@ -392,4 +399,4 @@ A disabled primary pill is a dead end; a pill that reports distance is part of t
 - Partial face or eye reveal; any non-uniform blur.
 - Neumorphic double/emboss shadows (softness was borrowed from the reference, the emboss was not).
 - Auto-revealing without mutual consent.
-- Rendering any place name — neighbourhood, city, venue, landmark — inferred from the user's location. The count of nearby signals is the only spatial fact that ships outside an active encounter. *Inside* an active encounter a live distance to the one person you are already meeting is permissible; a place name still is not. And a distance is never approximated to fill the slot — if the figure is not available, the line goes.
+- Rendering any place name — neighbourhood, city, venue, landmark, building — inferred from the user's location, or the geohash or campus polygon behind a geofence. The school's own `displayName` and a Spring Break destination's server-supplied `displayLabel` are the two exemptions (§7): both are community identity, identical for everyone in that community, and neither localises the person holding the phone. The count of nearby signals remains the only *spatial* fact that ships outside an active encounter. *Inside* an active encounter a live distance to the one person you are already meeting is permissible; a place name still is not. And a distance is never approximated to fill the slot — if the figure is not available, the line goes.

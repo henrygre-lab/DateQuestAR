@@ -1,3 +1,14 @@
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
+// [x] No hardcoded secrets, API keys, or tokens
+// [x] Renders server-owned state only — trustLevel, studentIDStatus and the
+//     school are all written by Cloud Functions and read-only here
+// [x] No student ID image, school email, phone number or extracted document data
+//     reaches this view; the verification record it would come from is
+//     owner-read-only and is not fetched here
+// [x] The school display name is community identity, permitted by
+//     DESIGN_SYSTEM.md §8. No neighbourhood, venue, building or geohash.
+// [x] No PII logged
+
 import SwiftUI
 
 /// Trust centre (docs/DESIGN_SYSTEM.md §6 row 5): the current tier, the
@@ -7,6 +18,15 @@ import SwiftUI
 /// Tiers are never gamified — no medals, stars, XP bars or confetti (§5).
 struct TrustCenterView: View {
     let tier: UserProfile.TrustLevel
+
+    /// The user's community, e.g. "UCLA". Shown because on a campus product the
+    /// school *is* the first line of the trust story — everything below it is
+    /// about proving you belong to that community and are who you say you are.
+    var schoolDisplayName: String?
+
+    /// Server-written student ID state, used to say what is still outstanding.
+    var studentIDStatus: StudentIDStatus = .none
+
     /// Nil hides the CTA rather than shipping a pill that goes nowhere.
     var onManageVerification: (() -> Void)?
 
@@ -24,6 +44,9 @@ struct TrustCenterView: View {
 
             VStack(alignment: .leading, spacing: DQSpace.gutter) {
                 topBar
+                if let schoolDisplayName, !schoolDisplayName.isEmpty {
+                    communityRow(schoolDisplayName)
+                }
                 currentTierCard
                 ladderSection
                 disclaimer
@@ -48,6 +71,37 @@ struct TrustCenterView: View {
                 .foregroundStyle(p.text)
             Spacer(minLength: 0)
         }
+    }
+
+    // MARK: - Community
+
+    private func communityRow(_ school: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "graduationcap.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(p.verify)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(school)
+                    .font(DQFont.uiSized(14, .bold))
+                    .foregroundStyle(p.text)
+                Text(studentIDStatus.isFaceMatched
+                     ? "Verified student. Dating and NameDrop are available."
+                     : studentIDStatus.isIDVerified
+                       ? "Verified student. Match your ID to your selfie to unlock Dating."
+                       : "Add your student ID to start Quest Mode.")
+                    .font(DQFont.uiSized(11.5, .medium))
+                    .foregroundStyle(p.text2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 17)
+        .padding(.vertical, 15)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: DQRadius.card, style: .continuous).fill(p.surface))
+        .overlay(RoundedRectangle(cornerRadius: DQRadius.card, style: .continuous)
+            .strokeBorder(p.line, lineWidth: 1))
+        .accessibilityElement(children: .combine)
     }
 
     // MARK: - Current tier

@@ -6,6 +6,15 @@
 // [x] alertCap values originate from server; client enforces locally as a courtesy check
 // [x] No PII logged — only aggregate ratios and enum states
 // [x] Minimal data exposure — shouldShowMatch returns Bool, no profile data leaked
+// [x] Ratios are per-school. Balance is a campus fact, not a national one: a
+//     50/50 national split can still be a 90/10 campus, and throttling on the
+//     wrong denominator throttles the wrong people.
+// [x] Every mechanism here — visibility throttling, women-first queuing, the male
+//     waitlist, hourly caps — is Dating-only. Callers must have established that
+//     the encounter's LOCKED intents contain Dating before consulting this type;
+//     shouldShowMatch additionally refuses users for whom Dating is not gated.
+// [x] Dating-gating is read from isDatingGated(), which honours the server-written
+//     24h cooldown — switching Dating off does not lift the throttle
 // [x] Listener errors logged without exposing internals to UI
 // [x] Analytics events contain no raw UIDs or PII
 
@@ -53,9 +62,9 @@ final class BalanceEnforcer: ObservableObject {
     /// listening. Call this only after a successful profile load (e.g. from
     /// AuthViewModel/MatchManager) so it never fires before authentication and
     /// avoids noisy reads/logs on cold start or during testing.
-    func startListening() {
+    func startListening(schoolId: String? = nil) {
         guard statsListener == nil else { return }
-        listenToGenderStats()
+        listenToGenderStats(schoolId: schoolId)
     }
 
     /// Stops the real-time listener and clears it so it can be restarted later.
@@ -66,10 +75,21 @@ final class BalanceEnforcer: ObservableObject {
 
     // MARK: - Real-Time Listener
 
-    /// Listens to `global_gender_stats/current` for live ratio updates.
-    /// This document is written exclusively by the balanceMonitor Cloud Function.
-    private func listenToGenderStats() {
-        statsListener = db.collection("global_gender_stats").document("current")
+    /// Listens to this campus's live Dating ratio.
+    ///
+    /// The document is per-school (`global_gender_stats/{schoolId}`) and covers
+    /// Dating-gated users only. It is written exclusively by the balanceMonitor
+    /// Cloud Function; `firestore.rules` makes it read-only to every client.
+    ///
+    /// Without a schoolId there is nothing meaningful to listen to, so the
+    /// listener is not started and `isStatsAvailable` stays false.
+    private func listenToGenderStats(schoolId: String?) {
+        guard let schoolId, !schoolId.isEmpty else {
+            Log.balance.debug("No school yet — balance listener not started")
+            return
+        }
+
+        statsListener = db.collection("global_gender_stats").document(schoolId)
             .addSnapshotListener { [weak self] snapshot, error in
                 guard let self else { return }
 
@@ -127,18 +147,29 @@ final class BalanceEnforcer: ObservableObject {
 
     // MARK: - Match Visibility Gate
 
-    /// Determines whether a match should be surfaced to this user.
+    /// Determines whether a **Dating-gated** match should be surfaced to this user.
+    ///
+    /// Callers must already know the encounter's locked intents contain Dating.
+    /// The second guard is a belt-and-braces check on the same fact: if Dating is
+    /// not gated for this user — not switched on, and not inside the 24h
+    /// Dating-off cooldown — there is nothing here to apply, and throttling a
+    /// study-partner match on the campus romantic ratio would be nonsense.
+    ///
     /// Server-side Cloud Functions enforce the authoritative waitlist;
     /// this is a client-side courtesy filter to reduce wasted UI.
-    func shouldShowMatch(to user: UserProfile) -> Bool {
+    func shouldShowMatch(to user: UserProfile, at now: Date = Date()) -> Bool {
         // Waitlisted, suspended, or banned users never see matches
         guard user.accountStatus == .active else { return false }
+
+        // Dating-only. Note this reads isDatingGated, not isDatingActive, so a
+        // user who just switched Dating off is still throttled for 24h.
+        guard user.isDatingGated(at: now) else { return true }
 
         // If stats haven't loaded yet, allow matches (fail-open for UX;
         // server rules are the real gate)
         guard isStatsAvailable else { return true }
 
-        // If gender balance is skewed and user is male, apply visibility cap
+        // If the campus Dating ratio is skewed and user is male, apply visibility cap
         if needsFemaleBoost && user.gender == .male {
             let overflow = currentRatio - maleCapThreshold   // e.g. 0.60 - 0.55 = 0.05
             let passRate = max(0.1, 1.0 - (overflow * 5.0))  // scale down, floor at 10%
@@ -161,8 +192,12 @@ final class BalanceEnforcer: ObservableObject {
 
     // MARK: - Alert Cap Calculation
 
-    /// Returns the hourly alert cap for a given gender.
-    /// Server is authoritative; this provides a local fast-path check.
+    /// Returns the hourly alert cap for a given gender on **Dating-gated**
+    /// encounters. Server is authoritative; this is a local fast-path check.
+    ///
+    /// There is no non-Dating equivalent because there is no non-Dating hourly
+    /// gender cap. Other intents are bounded by the per-user ping cap and the
+    /// per-match cooldown in MatchManager, neither of which is gender-aware.
     func calculateAlertCap(for gender: Gender) -> Int {
         switch gender {
         case .female, .nonBinary:
@@ -177,7 +212,10 @@ final class BalanceEnforcer: ObservableObject {
     // MARK: - Waitlist Status Sync
 
     /// Reads the current user's waitlist status from Firestore.
-    /// The waitlist document is managed by Cloud Functions only.
+    ///
+    /// The waitlist is a Dating mechanism: a queued man is queued for Dating and
+    /// remains free to use Hangout, Study, Friendship and Event meanwhile. The
+    /// document is managed by Cloud Functions only.
     func syncWaitlistStatus(for uid: String) async {
         do {
             let doc = try await db.collection("waitlist").document(uid).getDocument()

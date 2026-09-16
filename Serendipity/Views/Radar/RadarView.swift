@@ -3,6 +3,19 @@
 // [x] Squad radar mode evaluated from explicit parameters — no mutable shared state
 // [x] BalanceEnforcer.needsFemaleBoost is read-only on client (written by Cloud Function)
 // [x] No PII displayed — only compatibility scores, proximity, and aggregate balance state
+// [x] The radar shows only what MatchManager surfaced, which is already
+//     community-gated: same school, or the same live Spring Break destination
+// [x] Off campus the scope is .none, nearbyUsers is empty, and this screen says so
+// [x] A lapsed visiting-campus claim is surfaced here too — the radar is where
+//     someone would otherwise sit watching a pool that has already narrowed
+// [x] The encounter slot cap is surfaced here too — the radar is where a user
+//     would otherwise sit watching signals that will never alert them
+// [x] A lapsed Spring Break claim is surfaced here too. The radar is where the
+//     cross-school pool is most visible, so it is where a silent narrowing would
+//     be most misleading.
+// [x] Squad Radar is forced on after dusk inside a Spring Break destination
+// [x] No place name rendered — the destination's own server-supplied label is the
+//     only exception, and no neighbourhood, venue or geohash appears
 // [x] AR session does not transmit location or camera data off-device
 
 import SwiftUI
@@ -24,6 +37,50 @@ struct RadarView: View {
     @State private var blipPulse = false
     @State private var squadRadarOn = false
 
+    /// One line describing why the radar is showing what it is showing.
+    ///
+    /// The cap comes first: it is the reason nothing will alert, and it is the
+    /// one of these the user can act on.
+    private var voiceOverStatusLine: String {
+        if matchManager.isAtSessionCap { return Self.sessionCapMessage }
+        if let paused = locationService.visitingCampusStatus.pausedMessage { return paused }
+        if let paused = locationService.springBreakStatus.pausedMessage { return paused }
+        guard locationService.communityScope.allowsQuestMode else { return "Paused — off campus" }
+        return "\(matchManager.nearbyUsers.count) nearby matches"
+    }
+
+    private static let sessionCapMessage =
+        "Finish or pass your current quests to meet someone new."
+
+    /// Spring Break pause banner for the HUD.
+    ///
+    /// Sits under the top bar rather than over the ring: the ring is the live
+    /// readout, and covering it to explain that the pool narrowed would hide the
+    /// thing the explanation is about.
+    @ViewBuilder
+    private var springBreakPausedBanner: some View {
+        // The cap takes the slot when both apply — it is the more actionable of
+        // the two, and stacking banners over the ring buries the readout.
+        if let message = matchManager.isAtSessionCap
+            ? Self.sessionCapMessage
+            : (locationService.visitingCampusStatus.pausedMessage
+               ?? locationService.springBreakStatus.pausedMessage) {
+            Text(message)
+                .font(DQ.Typography.caption())
+                .foregroundStyle(DQ.Colors.textPrimary)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, DQ.Spacing.md)
+                .padding(.vertical, DQ.Spacing.sm)
+                .background(
+                    RoundedRectangle(cornerRadius: DQ.Radii.medium)
+                        .fill(DQ.Colors.surfaceCard.opacity(0.92))
+                )
+                .padding(.horizontal, DQ.Spacing.xl)
+                .accessibilityLabel(message)
+        }
+    }
+
     var body: some View {
         ZStack {
             // AR Camera feed or VoiceOver fallback
@@ -38,6 +95,7 @@ struct RadarView: View {
             // HUD overlay
             VStack {
                 topBar
+                springBreakPausedBanner
                 Spacer()
                 radarRing
                 Spacer()
@@ -54,7 +112,7 @@ struct RadarView: View {
                     .font(.caption)
                     .monospaced()
 
-                Text("\(matchManager.nearbyUsers.count) nearby matches")
+                Text(voiceOverStatusLine)
                     .font(.headline)
 
                 if !matchManager.nearbyUsers.isEmpty {
@@ -89,10 +147,17 @@ struct RadarView: View {
             blipPulse = true
             // Default squad radar based on user preference and nearby density
             if let user = authViewModel.currentUser {
-                squadRadarOn = user.socialContextPreference || matchManager.activeMatches.count >= 10
+                // After dusk at a Spring Break destination, Squad Radar is the
+                // default rather than a preference — people arrive in groups
+                // there and should stay in them.
+                let forced = locationService.prefersSquadRadar
+                squadRadarOn = forced
+                    || user.socialContextPreference
+                    || matchManager.activeMatches.count >= 10
                 ProximityService.shared.evaluateSquadRadarMode(
                     prefersSocialContext: user.socialContextPreference,
-                    nearbyCount: matchManager.activeMatches.count
+                    nearbyCount: matchManager.activeMatches.count,
+                    forceSquadRadar: forced
                 )
             }
         }
@@ -164,7 +229,10 @@ struct RadarView: View {
                     squadRadarOn.toggle()
                     ProximityService.shared.evaluateSquadRadarMode(
                         prefersSocialContext: squadRadarOn,
-                        nearbyCount: matchManager.activeMatches.count
+                        nearbyCount: matchManager.activeMatches.count,
+                        // The dusk rule still applies: the toggle cannot switch
+                        // Squad Radar off inside a live destination after dark.
+                        forceSquadRadar: locationService.prefersSquadRadar
                     )
                 } label: {
                     HStack(spacing: DQ.Spacing.xxs) {

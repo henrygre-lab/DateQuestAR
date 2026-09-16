@@ -4,6 +4,8 @@
 // [x] Activation managed server-side by Cloud Functions — client polls only
 // [x] No PII displayed — only wait time estimate and status
 // [x] accountStatus transition to .active triggers navigation to HomeView
+// [x] The waitlist is Dating-only, and this screen says so — every other intent
+//     stays open while queued, so the copy must not imply the app is locked
 // [x] Referral link generation would use server-side function (stubbed for Phase 5)
 
 import SwiftUI
@@ -56,11 +58,11 @@ struct WaitlistView: View {
 
             // Status text
             VStack(spacing: DQ.Spacing.md) {
-                Text("You're on the Waitlist")
+                Text("You're queued for Dating")
                     .font(.system(size: 24, weight: .bold))
                     .foregroundStyle(DQ.Colors.textPrimary)
 
-                Text("To keep Serendipity balanced and safe for everyone, we're managing the number of new accounts. You'll be activated soon!")
+                Text("Dating on your campus is male-skewed right now, so we're letting people in gradually. Hangout, Study, Friendship and Events are open — you can use those while you wait.")
                     .font(DQ.Typography.body())
                     .foregroundStyle(DQ.Colors.textSecondary)
                     .multilineTextAlignment(.center)
@@ -77,7 +79,7 @@ struct WaitlistView: View {
                         .foregroundStyle(DQ.Colors.textPrimary)
                 }
 
-                Text("Invite friends to move up. Each friend who joins boosts your priority.")
+                Text("Invite people from your school to move up. Each one who joins boosts your priority.")
                     .font(DQ.Typography.caption())
                     .foregroundStyle(DQ.Colors.textTertiary)
                     .multilineTextAlignment(.center)

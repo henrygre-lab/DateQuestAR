@@ -20,7 +20,7 @@ struct VibeScoreBreakdown: View {
     private var rows: [(label: String, value: Double)] {
         [
             ("Shared interests", breakdown.interestOverlap),
-            ("Intent match", breakdown.relationshipTypeMatch),
+            ("Intent match", breakdown.intentMatch),
             ("Age range", breakdown.ageCompatibility),
             ("Preferences", breakdown.preferenceAlignment)
         ]

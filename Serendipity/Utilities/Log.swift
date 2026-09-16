@@ -1,3 +1,13 @@
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
+// [x] No hardcoded secrets, API keys, or tokens
+// [x] Every message is handed to os.Logger marked .private, so it is redacted in
+//     any log a shipping build hands out — this is the file that replaced 55
+//     print() calls which were not compiled out of release builds
+// [x] No print() anywhere in the app; this is the only logging path
+// [x] Callers are responsible for not passing PII; the .private marking is the
+//     backstop, not the policy
+// [x] Categories carry no user data — they are fixed subsystem names
+
 import Foundation
 import os
 
@@ -31,6 +41,7 @@ struct Log {
     static let app = Log("App")
     static let ar = Log("ARKit")
     static let alertCaps = Log("AlertCaps")
+    static let auth = Log("Auth")
     static let balance = Log("Balance")
     static let firestore = Log("Firestore")
     static let gamification = Log("Gamification")
@@ -41,6 +52,7 @@ struct Log {
     static let referral = Log("Referral")
     static let reveal = Log("Reveal")
     static let safety = Log("Safety")
+    static let school = Log("SchoolGate")
     static let waitlist = Log("Waitlist")
     static let xp = Log("XP")
 

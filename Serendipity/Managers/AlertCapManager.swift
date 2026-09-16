@@ -1,14 +1,23 @@
 // MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets, API keys, or tokens
-// [x] Client-side daily alert caps are ADVISORY ONLY — final enforcement happens
-//     via Firestore Security Rules (to be added in follow-up)
+// [x] Client-side daily alert caps are ADVISORY ONLY — firestore.rules is the
+//     enforcement boundary and rejects any client write to the fields that decide
+//     access (trustLevel, accountStatus, activeIntents, datingCooldownUntil)
+// [x] Caps apply ONLY to Dating-gated encounters. A Study, Hangout, Friendship or
+//     Event overlap is never gender-throttled — callers must pass the session's
+//     locked intents, and there is no overload that lets them skip it.
+// [x] The Dating decision comes from the session's LOCKED intents, not from either
+//     user's current intent list, so switching Dating off mid-session changes
+//     nothing about the session in flight
+// [x] The 24h Dating-off cooldown is read from datingCooldownUntil, which only
+//     setActiveIntents writes — a client cannot shorten or skip it
 // [x] Firestore writes use updateData with ONLY alert-related fields — never
 //     overwrites server-authoritative fields (accountStatus, trustLevel, etc.)
 // [x] Document ID comes from @DocumentID (Firestore-assigned); uid is non-optional
-// [x] No PII logged — only uid passed to error context, no partner data exposed
+// [x] No PII logged — no uid, no partner data; only doc-prefix on write failure
 // [x] Profile loaded via FirestoreService where possible + date reset guard
 // [x] Directly addresses POTENTIAL_ISSUES.md #1 (Gender Imbalance) and
-//     docs/LAUNCH_STRATEGY.md (campus/nightlife/festival launches)
+//     docs/LAUNCH_STRATEGY.md (campus pilot)
 
 import Foundation
 import FirebaseFirestore
@@ -28,23 +37,36 @@ class AlertCapManager: ObservableObject {
 
     // MARK: - Public API
 
-    /// Check if the current user can send an alert right now (uses cached profile)
-    func canSendAlert() async -> Bool {
+    /// Whether the cached user can send an alert on a **Dating-gated** encounter.
+    ///
+    /// There is no capless variant of this call by design: a caller that does not
+    /// know the session's intents cannot be allowed to consult a Dating cap, and
+    /// a caller that does know them should pass them.
+    func canSendDatingAlert() async -> Bool {
         guard var profile = currentUserProfile else { return false }
         return profile.canSendAlert()
     }
 
-    /// Record that an alert was sent (call after successful match alert)
-    func recordAlertSent() async {
+    /// Record that a Dating-gated alert was sent.
+    ///
+    /// Only Dating alerts consume the daily allowance. Counting a Study alert
+    /// against a woman's 10/day would push her out of the intents that are not
+    /// gender-imbalanced in the first place.
+    func recordDatingAlertSent() async {
         guard var profile = currentUserProfile else { return }
         profile.incrementAlertCount()
         currentUserProfile = profile
         await updateAlertFieldsInFirestore(profile)
     }
 
-    /// Get the user's current daily limit (for UI display)
-    func getCurrentDailyLimit() -> Int {
-        currentUserProfile?.currentDailyLimit ?? 30
+    /// The user's Dating daily limit, for UI display.
+    ///
+    /// Returns nil when Dating is not gated for this user, because there is no
+    /// cap to show — a screen that renders "0 of 10" to someone on Study only
+    /// would be describing a limit that does not apply to them.
+    func currentDatingDailyLimit(at now: Date = Date()) -> Int? {
+        guard let profile = currentUserProfile, profile.isDatingGated(at: now) else { return nil }
+        return profile.currentDailyLimit
     }
 
     // MARK: - MatchManager Integration API
@@ -55,17 +77,29 @@ class AlertCapManager: ObservableObject {
         currentUserProfile = user
     }
 
-    /// Checks whether `user` can send an alert for the given `match`.
-    /// Resets daily counter if the date has rolled over.
-    /// This is a client-side courtesy gate — Firestore rules are authoritative.
-    func canSendAlert(for user: UserProfile, match: Match?) -> Bool {
-        // Sync latest profile state
+    /// Checks whether `user` can send an alert for an encounter with the given
+    /// locked intents.
+    ///
+    /// `lockedIntents` is the overlap frozen at session start, not either user's
+    /// current list. If it contains no Dating, this returns true without touching
+    /// the daily counter at all: the asymmetric caps exist to stop women being
+    /// swarmed with romantic attention, and they have no business throttling
+    /// someone looking for a study partner.
+    ///
+    /// Client-side courtesy gate — Firestore rules are authoritative.
+    func canSendAlert(for user: UserProfile,
+                      match: Match?,
+                      lockedIntents: [Intent]) -> Bool {
         currentUserProfile = user
+        guard Intent.engagesGenderBalance(lockedIntents) else { return true }
         guard var profile = currentUserProfile else { return false }
         return profile.canSendAlert()
     }
 
     /// Returns the asymmetric daily alert cap for a given gender.
+    ///
+    /// Only meaningful for Dating-gated encounters; callers must have established
+    /// that before consulting it.
     func dailyCapForGender(_ gender: Gender) -> Int {
         switch gender {
         case .female:         return 10
@@ -76,8 +110,13 @@ class AlertCapManager: ObservableObject {
     }
 
     /// Records an alert sent by the user for a specific match.
-    /// Increments the daily counter and syncs advisory state to Firestore.
-    func recordAlertSent(for uid: String, matchID: String) async {
+    ///
+    /// Increments the daily counter only when the match is Dating-gated. The flag
+    /// comes off the match document, which is immutable once written —
+    /// `firestore.rules` lists `isDatingGated` among the fields a participant
+    /// cannot rewrite, so it cannot be flipped after the fact to dodge a cap.
+    func recordAlertSent(for uid: String, match: Match) async {
+        guard match.isDatingGated else { return }
         guard var profile = currentUserProfile, profile.uid == uid else { return }
         profile.incrementAlertCount()
         currentUserProfile = profile
@@ -124,7 +163,7 @@ class AlertCapManager: ObservableObject {
         }
         do {
             guard let profile = try await firestoreService.fetchUser(uid: uid) else {
-                Log.alertCaps.error("No profile found for uid: \(uid)")
+                Log.alertCaps.error("No profile found for the current user")
                 return
             }
 

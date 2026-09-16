@@ -1,3 +1,12 @@
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
+// [x] No hardcoded secrets, API keys, or tokens
+// [x] NameDrop is gated on canNameDrop, which requires the student ID <-> liveness
+//     face match. This view is the first of three layers: RevealManager refuses to
+//     advance the stage without it, and firestore.rules rejects a 'connected'
+//     write without the faceMatched claim. The rule is the authoritative one.
+// [x] canNameDrop reads server-written fields only — no client self-promotion
+// [x] Reveal progress is clamped 0.0-1.0 by EncounterSession before any write
+// [x] No PII logged
 import SwiftUI
 
 /// Shared AR icebreaker challenge. Supports Trivia (single pick) and Word
@@ -10,6 +19,7 @@ import SwiftUI
 struct IcebreakerView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject var matchManager: MatchManager
+    @EnvironmentObject var authViewModel: AuthViewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dq) private var p
     @Environment(\.dqTheme) private var theme
@@ -78,7 +88,9 @@ struct IcebreakerView: View {
         .onAppear { startTimer() }
         .onDisappear { timer?.invalidate() }
         .sheet(isPresented: $showNameDropOverlay) {
-            NameDropInstructionView()
+            NameDropInstructionView(
+                canNameDrop: authViewModel.currentUser?.canNameDrop ?? false
+            )
         }
         .sheet(isPresented: $showRating) {
             PostMeetRatingView(matchID: matchManager.nearbyMatch?.id ?? "")

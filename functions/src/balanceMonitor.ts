@@ -3,6 +3,12 @@
 // [x] Runs as scheduled Cloud Function with Admin SDK — no client credentials
 // [x] Writes only to global_gender_stats and Remote Config — never user PII
 // [x] No raw user data exported — only aggregate counts and percentages
+// [x] Ratios are computed PER SCHOOL. Balance is a campus fact: a 50/50 national
+//     split can still be a 90/10 campus, and throttling on the wrong denominator
+//     throttles the wrong people.
+// [x] Counts cover Dating-gated users only — Dating on, or inside the 24h
+//     Dating-off cooldown. A campus that is male-skewed on Study but balanced on
+//     Dating is not throttled, because the caps only ever apply to Dating.
 // [x] Parameterized thresholds via Remote Config, not magic numbers in code
 
 import * as admin from "firebase-admin";
@@ -36,51 +42,79 @@ interface GenderCounts {
  *    - women_first_queuing_enabled
  */
 export const balanceMonitor = onSchedule("every 60 minutes", async () => {
-  const counts = await countActiveUsersByGender();
-  const malePct = counts.total > 0 ? counts.male / counts.total : 0.5;
-  const femalePct = counts.total > 0 ? counts.female / counts.total : 0.5;
-  const imbalanced = malePct > MALE_CAP_THRESHOLD;
+  const schoolIds = await listActiveSchoolIds();
 
-  // Write aggregate stats — no PII, only counts
-  await db
-    .collection("global_gender_stats")
-    .doc("current")
-    .set(
-      {
-        totalActive: counts.total,
-        maleCount: counts.male,
-        femaleCount: counts.female,
-        nonBinaryCount: counts.nonBinary,
-        preferNotToSayCount: counts.preferNotToSay,
-        malePct: Math.round(malePct * 1000) / 1000,
-        femalePct: Math.round(femalePct * 1000) / 1000,
-        femaleAlertCap: DEFAULT_FEMALE_ALERT_CAP,
-        maleAlertCap: imbalanced ? THROTTLED_MALE_ALERT_CAP : DEFAULT_MALE_ALERT_CAP,
-        womenFirstQueuingEnabled: imbalanced,
-        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-      },
-      { merge: true }
+  for (const schoolId of schoolIds) {
+    const counts = await countDatingGatedUsersByGender(schoolId);
+    const malePct = counts.total > 0 ? counts.male / counts.total : 0.5;
+    const femalePct = counts.total > 0 ? counts.female / counts.total : 0.5;
+    const imbalanced = malePct > MALE_CAP_THRESHOLD;
+
+    // Write aggregate stats — no PII, only counts
+    await db
+      .collection("global_gender_stats")
+      .doc(schoolId)
+      .set(
+        {
+          schoolId,
+          // Recorded so a reader cannot mistake this for a headcount of the
+          // whole campus. It is the Dating-gated subset and nothing else.
+          datingGatedOnly: true,
+          totalActive: counts.total,
+          maleCount: counts.male,
+          femaleCount: counts.female,
+          nonBinaryCount: counts.nonBinary,
+          preferNotToSayCount: counts.preferNotToSay,
+          malePct: Math.round(malePct * 1000) / 1000,
+          femalePct: Math.round(femalePct * 1000) / 1000,
+          femaleAlertCap: DEFAULT_FEMALE_ALERT_CAP,
+          maleAlertCap: imbalanced ? THROTTLED_MALE_ALERT_CAP : DEFAULT_MALE_ALERT_CAP,
+          womenFirstQueuingEnabled: imbalanced,
+          lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+    console.log(
+      `[balanceMonitor] ${schoolId}: ${counts.total} dating-gated, ` +
+        `malePct=${(malePct * 100).toFixed(1)}%, imbalanced=${imbalanced}`
     );
+  }
 
   // Update Remote Config parameters for client-side feature flags
   // NOTE: Remote Config Admin API requires separate setup.
-  // For now, clients read from global_gender_stats/current directly.
+  // For now, clients read from global_gender_stats/{schoolId} directly.
   // TODO: Wire up Remote Config Admin API when project scales beyond beta.
-
-  console.log(
-    `[balanceMonitor] Updated stats: ${counts.total} active, ` +
-      `malePct=${(malePct * 100).toFixed(1)}%, imbalanced=${imbalanced}`
-  );
 });
 
+/** Active schools. Each gets its own ratio document. */
+async function listActiveSchoolIds(): Promise<string[]> {
+  const snapshot = await db
+    .collection("schools")
+    .where("isActive", "==", true)
+    .select()
+    .get();
+  return snapshot.docs.map((doc) => doc.id);
+}
+
 /**
- * Counts active (non-waitlisted, non-banned) users grouped by gender.
+ * Counts a school's Dating-gated users by gender.
+ *
+ * "Dating-gated" means Dating is switched on, or the user is inside the 24h
+ * cooldown that follows switching it off. Counting the cooldown matters: without
+ * it, a wave of men could switch Dating off, drop out of the denominator, and
+ * make the campus look balanced while still being throttled — or worse, make it
+ * look balanced enough to lift the throttle.
  */
-async function countActiveUsersByGender(): Promise<GenderCounts> {
+async function countDatingGatedUsersByGender(
+  schoolId: string
+): Promise<GenderCounts> {
   const snapshot = await db
     .collection("users")
+    .where("schoolId", "==", schoolId)
     .where("accountStatus", "==", "active")
-    .select("gender") // Minimal data — only fetch the gender field
+    // Minimal data — only the three fields the count needs
+    .select("gender", "activeIntents", "datingCooldownUntil")
     .get();
 
   const counts: GenderCounts = {
@@ -91,8 +125,20 @@ async function countActiveUsersByGender(): Promise<GenderCounts> {
     total: 0,
   };
 
+  const now = admin.firestore.Timestamp.now();
+
   for (const doc of snapshot.docs) {
-    const gender = doc.data().gender as string;
+    const data = doc.data();
+    const intents = (data.activeIntents as string[] | undefined) ?? [];
+    const cooldown = data.datingCooldownUntil as
+      | admin.firestore.Timestamp
+      | undefined;
+
+    const datingOn = intents.includes("dating");
+    const inCooldown = cooldown != null && cooldown.toMillis() > now.toMillis();
+    if (!datingOn && !inCooldown) continue;
+
+    const gender = data.gender as string;
     counts.total++;
     switch (gender) {
       case "male":

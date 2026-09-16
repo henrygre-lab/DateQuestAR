@@ -12,11 +12,35 @@
 //     transaction as a second layer after AlertCapManager daily cap
 // [x] Per-user ping cap (5/hr) retained as complementary anti-harassment layer
 // [x] IntentVibe scoring uses only user-supplied tags, no PII inference
+// [x] Same-school hard gate on EVERY path — nearby, match creation, proximity
+//     event handling and icebreaker dispatch all run CommunityGate.canShare
+//     against the current CommunityScope before doing any work
+// [x] Off campus (and outside any live Spring Break fence) the scope is .none and
+//     every one of those paths returns empty — auto-pause, fail-closed
+// [x] Cross-school matching is reachable two ways, both requiring a live,
+//     server-issued and expiring presence claim: a campus the user is physically
+//     on that is not their own (the Big Game rule), or a Spring Break
+//     destination. Leaving either drops back to same-school.
+// [x] Gender-balance tools (asymmetric caps, women-first queue, waitlist) are
+//     applied ONLY when the encounter's locked intent overlap contains Dating —
+//     a Study or Hangout overlap is never gender-throttled
+// [x] The Dating decision is taken once, from BOTH users, at session start and
+//     locked; switching Dating off mid-session changes nothing, and the 24h
+//     server cooldown keeps the caps on afterwards
+// [x] Client filters here are courtesy only — firestore.rules enforces the same
+//     school predicate per document and is the real boundary
+// [x] Encounter slot cap (2 per user) gates alerts in BOTH directions: a capped
+//     user sends no new alerts and is shown none. The count comes from Firestore
+//     via RevealManager, never a local array, and openEncounterSession re-counts
+//     inside a transaction — so a client that ignores this gate still cannot open
+//     a third session.
+// [x] The cap is on top of the Dating caps and the 24h Dating cooldown, not
+//     instead of them, and applies to every intent
 // [x] No raw coordinates logged — only match IDs and enum states
 // [x] No mutable public user state — profile passed explicitly to avoid stale data
 // [x] Analytics events contain no raw UIDs — partner UIDs hashed before logging
-// [x] Ties to launch strategy: campus, nightlife, and festival zones require all caps active
-//     before any marketing push (see docs/LAUNCH_STRATEGY.md)
+// [x] Ties to launch strategy: campus pilots require all caps active before any
+//     marketing push (see docs/LAUNCH_STRATEGY.md)
 
 import Foundation
 import Combine
@@ -35,6 +59,16 @@ final class MatchManager: ObservableObject {
     @Published var currentIcebreaker: IcebreakerChallenge?
     @Published var isQuestModeActive = false
     @Published var nearbyUsers: [UserProfile] = []
+
+    /// True when the user is holding the maximum number of encounters.
+    ///
+    /// Republished from `RevealManager` rather than computed off it: a computed
+    /// property reading another object's `@Published` value does not notify this
+    /// object's observers, so the Home and Radar lines would only appear on the
+    /// next unrelated redraw.
+    ///
+    /// Courtesy display only — the cap is enforced by `openEncounterSession`.
+    @Published private(set) var isAtSessionCap = false
 
     #if DEBUG
     // MARK: - Demo State (DEBUG only)
@@ -78,6 +112,7 @@ final class MatchManager: ObservableObject {
 
     private let alertCapManager = AlertCapManager.shared
     private let balanceEnforcer = BalanceEnforcer.shared
+    private let revealManager = RevealManager.shared
     private let firestoreService = FirestoreService.shared
     private let analytics = AnalyticsService.shared
 
@@ -92,6 +127,7 @@ final class MatchManager: ObservableObject {
 
     private init() {
         observeProximityEvents()
+        observeSessionSlots()
     }
 
     // MARK: - Quest Mode
@@ -102,8 +138,27 @@ final class MatchManager: ObservableObject {
             Log.match.debug("Quest mode blocked: accountStatus=\(user.accountStatus)")
             return
         }
+
+        // Gate 2. A school email gets you into the community; it does not get you
+        // proximity scanning. That needs the student ID card photo + liveness,
+        // which is deliberately stricter than Fizz.
+        guard user.canStartQuestMode else {
+            Log.match.debug("Quest mode blocked: student ID verification incomplete")
+            return
+        }
+
         activeQuestUser = user
         isQuestModeActive = true
+
+        // Start counting encounter slots from Firestore. Until this is running
+        // the client has no idea how many it holds, which is why the server
+        // re-counts on every open rather than trusting what arrives.
+        revealManager.startObservingSlots(uid: user.uid)
+
+        // Arm the campus boundary before scanning starts. Until LocationService
+        // has a campus to test against, the scope stays .none and the nearby
+        // query returns nothing — which is the correct answer, not a bug.
+        Task { await configureGeofences(for: user) }
 
         // Initialize AlertCapManager with current user's profile so asymmetric
         // daily caps are ready before the first proximity event fires.
@@ -115,22 +170,195 @@ final class MatchManager: ObservableObject {
     }
 
     func disableQuestMode() {
+        // Free the slots before dropping local state, so a user who stops looking
+        // stops occupying the other person's slot too.
+        Task { await revealManager.releaseAllSessions() }
+        revealManager.stopObservingSlots()
+
         activeQuestUser = nil
         isQuestModeActive = false
+        nearbyUsers = []
+        activeMatches = []
         LocationService.shared.stopQuestScanning()
         NotificationCenter.default.post(name: .questModeChanged, object: false)
+    }
+
+    /// Ends the encounter on screen and frees its slot.
+    ///
+    /// The explicit-pass path. Works for a real encounter and a demo one — the
+    /// demo shares the same stage machine, so it should share the same exit.
+    func endCurrentEncounter(reason: EncounterSession.CloseReason) {
+        guard let matchID = nearbyMatch?.id else { return }
+        Task { await RevealManager.shared.endSession(for: matchID, reason: reason) }
+
+        #if DEBUG
+        if RevealManager.shared.isDemoMode {
+            endDemoEncounter()
+            return
+        }
+        #endif
+
+        nearbyMatch = nil
+        nearbyMatchProfile = nil
+        currentIcebreaker = nil
+    }
+
+    /// Mirrors RevealManager's slot count onto this object so views binding to
+    /// MatchManager see the cap change as it happens.
+    private func observeSessionSlots() {
+        revealManager.$isAtSessionCap
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] atCap in self?.isAtSessionCap = atCap }
+            .store(in: &cancellables)
+    }
+
+    // MARK: - Community Scope
+
+    /// The pool the device may currently see. `.none` means auto-paused.
+    var communityScope: CommunityScope { LocationService.shared.communityScope }
+
+    /// Loads the user's campus boundary and any live Spring Break destinations,
+    /// then hands both to LocationService.
+    ///
+    /// Both come from backend documents. Nothing here authors a fence.
+    private func configureGeofences(for user: UserProfile) async {
+        guard let schoolId = user.schoolId else { return }
+
+        if let school = try? await firestoreService.fetchSchool(schoolId: schoolId), school.isActive {
+            LocationService.shared.configureCampus(schoolId: schoolId, geofence: school.campus)
+        } else {
+            Log.match.error("Campus geofence unavailable — Quest Mode stays paused")
+        }
+
+        // Every allowlisted campus, not just this user's — the Big Game rule
+        // means any of them can become the active pool.
+        if let schools = try? await firestoreService.fetchSchools() {
+            LocationService.shared.configureVisitableCampuses(schools)
+        }
+
+        if let destinations = try? await firestoreService.fetchActiveSpringBreakDestinations() {
+            LocationService.shared.configureSpringBreakDestinations(destinations)
+        }
+    }
+
+    /// Called by LocationService whenever the device crosses into or out of a
+    /// community.
+    ///
+    /// Leaving one clears the pool immediately rather than letting stale
+    /// candidates linger: "no leftover cross-school radar" has to mean the
+    /// screen too, not just the next query.
+    func communityScopeChanged(to scope: CommunityScope) async {
+        guard scope.allowsQuestMode else {
+            nearbyUsers = []
+            activeMatches = []
+            nearbyMatch = nil
+            nearbyMatchProfile = nil
+            Log.match.debug("Community scope cleared — Quest Mode paused")
+            return
+        }
+
+        nearbyUsers = []
+        activeMatches = []
+        if let user = activeQuestUser {
+            await fetchPotentialMatches(for: user)
+        }
     }
 
     // MARK: - Core Safety Gate (Phase 2)
 
     /// Must be called before any alert. Fail-closed at every layer.
+    ///
+    /// Order is deliberate. The community gate runs first and costs nothing: if
+    /// these two people are not in the same pool, no amount of compatibility
+    /// matters and no cap needs consulting.
+    ///
+    /// The gender-balance layers run only when the pair's locked intent overlap
+    /// contains Dating. Two people matching on Study are not gender-throttled —
+    /// that is the whole point of intents being separate from Dating.
     func shouldTriggerAlert(for currentUser: UserProfile, match: UserProfile) -> Bool {
-        guard balanceEnforcer.shouldShowMatch(to: currentUser) else { return false }
-        guard alertCapManager.canSendAlert(for: currentUser, match: nil) else { return false }
+        // 1. Same school (or same live Spring Break destination). Hard gate.
+        guard CommunityGate.canShare(viewer: currentUser,
+                                     candidate: match,
+                                     in: communityScope) else { return false }
+
+        // 2. Encounter slots. Someone already holding two encounters is not
+        //    available for a third, in either direction — no outbound alert, and
+        //    nothing inbound shown to them. Checked early because it is a local
+        //    read and rules out the whole candidate.
+        guard !revealManager.isAtSessionCap else { return false }
+
+        // 3. Verification depth and account standing.
         guard SafetyVerifier.isSafeToAlert(match) else { return false }
+
+        // 4. Some shared reason to meet at all.
+        let locked = EncounterSession.lockIntents(currentUser, match)
+        guard !locked.isEmpty else { return false }
+
+        // 5. Gender-balance layers — Dating overlaps only. Note this is on top of
+        //    the slot cap above, not instead of it: the caps ration romantic
+        //    attention, the cap rations attention full stop.
+        if EncounterSession.locksDatingGate(currentUser, match) {
+            guard CommunityGate.canShareForDating(viewer: currentUser,
+                                                  candidate: match,
+                                                  in: communityScope) else { return false }
+            guard balanceEnforcer.shouldShowMatch(to: currentUser) else { return false }
+            guard alertCapManager.canSendAlert(for: currentUser,
+                                               match: nil,
+                                               lockedIntents: locked) else { return false }
+        }
 
         let breakdown = computeCompatibilityScore(userA: currentUser, userB: match)
         return breakdown.overall >= currentUser.preferences.compatibilityThreshold
+    }
+
+    /// Builds a Match with its community context and intent lock already set.
+    ///
+    /// Centralised so no call site can create a match without them. The scope
+    /// decides `partnerSchoolId` and `springBreakDestinationID`; the two profiles
+    /// decide the locked intents. Both are then immutable — `firestore.rules`
+    /// rejects an update that touches either.
+    private func makeMatch(currentUser: UserProfile,
+                           candidate: UserProfile,
+                           breakdown: ScoreBreakdown,
+                           scope: CommunityScope) -> Match? {
+        guard let viewerSchool = currentUser.schoolId,
+              let partnerSchool = candidate.schoolId else { return nil }
+
+        let destinationID: String?
+        let campusID: String?
+        let matchScope: Match.MatchScope
+        switch scope {
+        case .none:
+            return nil
+        case .campus(let schoolId):
+            // The campus they are both standing on, which under the Big Game
+            // rule may be neither person's own.
+            destinationID = nil
+            campusID = schoolId
+            matchScope = .campus
+        case .springBreak(let id, _):
+            destinationID = id
+            campusID = nil
+            matchScope = .springBreak
+        }
+
+        return Match(
+            id: UUID().uuidString,
+            userAUID: currentUser.uid,
+            userBUID: candidate.uid,
+            compatibilityScore: breakdown.overall,
+            scoreBreakdown: breakdown,
+            status: .pending,
+            createdAt: Date(),
+            meetupOccurred: false,
+            schoolId: viewerSchool,
+            partnerSchoolId: partnerSchool,
+            scope: matchScope,
+            springBreakDestinationID: destinationID,
+            campusId: campusID,
+            lockedIntents: EncounterSession.lockIntents(currentUser, candidate),
+            isDatingGated: EncounterSession.locksDatingGate(currentUser, candidate)
+        )
     }
 
     // MARK: - AI Compatibility Scoring
@@ -143,15 +371,14 @@ final class MatchManager: ObservableObject {
     ) -> ScoreBreakdown {
         let interestOverlap = scoreInterestOverlap(userA.preferences.interests,
                                                    userB.preferences.interests)
-        let relationshipMatch = scoreRelationshipTypes(userA.preferences.relationshipTypes,
-                                                      userB.preferences.relationshipTypes)
+        let intentMatch = scoreIntentOverlap(userA.eligibleIntents, userB.eligibleIntents)
         let ageCompat = scoreAgeCompatibility(userA.age, ageRange: userB.preferences.ageRange,
                                               partnerAge: userB.age, userAgeRange: userA.preferences.ageRange)
         let prefAlignment = scorePrefAlignment(userA.preferences, userB.preferences)
 
         return ScoreBreakdown(
             interestOverlap: interestOverlap,
-            relationshipTypeMatch: relationshipMatch,
+            intentMatch: intentMatch,
             ageCompatibility: ageCompat,
             preferenceAlignment: prefAlignment
         )
@@ -189,8 +416,12 @@ final class MatchManager: ObservableObject {
         return union == 0 ? 0 : Double(intersection) / Double(union)  // Jaccard index
     }
 
-    private func scoreRelationshipTypes(_ a: [MatchPreferences.RelationshipType],
-                                        _ b: [MatchPreferences.RelationshipType]) -> Double {
+    /// Jaccard overlap between two users' eligible intents.
+    ///
+    /// Reads `eligibleIntents`, so a user who has Dating selected without the
+    /// face match scores as though they had not — the same list the intent lock
+    /// uses, so scoring and gating cannot disagree.
+    private func scoreIntentOverlap(_ a: [Intent], _ b: [Intent]) -> Double {
         let setA = Set(a)
         let setB = Set(b)
         let intersection = setA.intersection(setB).count
@@ -227,17 +458,36 @@ final class MatchManager: ObservableObject {
             return
         }
 
+        // Off campus and outside every live destination fence. No pool.
+        let scope = communityScope
+        guard scope.allowsQuestMode else {
+            self.activeMatches = []
+            return
+        }
+
         do {
             let candidates = try await firestoreService.fetchNearbyUsers(
-                geohash: LocationService.shared.currentGeohash ?? "",
+                scope: scope,
                 excludeUID: currentUser.uid
             )
             let scored = candidates.compactMap { candidate -> Match? in
-                // Skip inactive candidates
-                guard candidate.accountStatus == .active else { return nil }
+                // Same school (or same live destination) + verification depth.
+                // The query above already constrains this and firestore.rules
+                // enforces it, but a candidate that slipped through either would
+                // be a cross-campus match, so it is re-checked here.
+                guard CommunityGate.canShare(viewer: currentUser,
+                                             candidate: candidate,
+                                             in: scope) else { return nil }
 
-                // BalanceEnforcer visibility gate (women-first queuing)
-                guard balanceEnforcer.shouldShowMatch(to: currentUser) else { return nil }
+                // Some shared reason to meet.
+                let locked = EncounterSession.lockIntents(currentUser, candidate)
+                guard !locked.isEmpty else { return nil }
+
+                // Women-first queuing is a Dating mechanism. A Study match is
+                // not held back by the campus gender ratio.
+                if EncounterSession.locksDatingGate(currentUser, candidate) {
+                    guard balanceEnforcer.shouldShowMatch(to: currentUser) else { return nil }
+                }
 
                 // Intent/vibe pre-filter: minimum 0.6 Jaccard similarity
                 let vibeScore = scoreVibeCompatibility(currentUser.intentVibes, candidate.intentVibes)
@@ -249,16 +499,10 @@ final class MatchManager: ObservableObject {
                 let breakdown = computeCompatibilityScore(userA: currentUser, userB: candidate)
                 guard isMutualMatch(breakdown, threshold: currentUser.preferences.compatibilityThreshold) else { return nil }
 
-                return Match(
-                    id: UUID().uuidString,
-                    userAUID: currentUser.uid,
-                    userBUID: candidate.uid,
-                    compatibilityScore: breakdown.overall,
-                    scoreBreakdown: breakdown,
-                    status: .pending,
-                    createdAt: Date(),
-                    meetupOccurred: false
-                )
+                return makeMatch(currentUser: currentUser,
+                                 candidate: candidate,
+                                 breakdown: breakdown,
+                                 scope: scope)
             }
             self.activeMatches = scored
         } catch {
@@ -268,28 +512,42 @@ final class MatchManager: ObservableObject {
 
     /// Refresh nearby-user list on location updates. Wired into LocationService.didUpdateLocations.
     func refreshNearbyUsers() async {
-        guard let geohash = LocationService.shared.currentGeohash, !geohash.isEmpty else {
-            Log.match.debug("No current geohash yet")
+        let scope = communityScope
+        guard scope.allowsQuestMode else {
+            nearbyUsers = []
+            return
+        }
+        guard let currentUser = activeQuestUser else {
+            nearbyUsers = []
             return
         }
 
         do {
             let candidates = try await firestoreService.fetchNearbyUsers(
-                geohash: geohash,
-                excludeUID: activeQuestUser?.uid ?? ""
+                scope: scope,
+                excludeUID: currentUser.uid
             )
 
-            // Apply safety + balance filter
-            nearbyUsers = candidates.filter { balanceEnforcer.shouldShowMatch(to: $0) }
-
-            Log.match.debug("Refreshed \(nearbyUsers.count) nearby users in geohash \(geohash)")
-
-            // Sort by compatibility (fallback to self if no active user)
-            if let current = activeQuestUser {
-                nearbyUsers.sort {
-                    computeCompatibilityScore(userA: current, userB: $0).overall >
-                    computeCompatibilityScore(userA: current, userB: $1).overall
+            nearbyUsers = candidates.filter { candidate in
+                guard CommunityGate.canShare(viewer: currentUser,
+                                             candidate: candidate,
+                                             in: scope) else { return false }
+                guard !EncounterSession.lockIntents(currentUser, candidate).isEmpty else { return false }
+                // Dating-gated pairs go through the balance enforcer; everyone
+                // else does not.
+                if EncounterSession.locksDatingGate(currentUser, candidate) {
+                    return balanceEnforcer.shouldShowMatch(to: currentUser)
                 }
+                return true
+            }
+
+            // Count only. The geohash used to be logged here, which is exactly
+            // the fact this app encodes location to avoid keeping.
+            Log.match.debug("Refreshed \(nearbyUsers.count) nearby users")
+
+            nearbyUsers.sort {
+                computeCompatibilityScore(userA: currentUser, userB: $0).overall >
+                computeCompatibilityScore(userA: currentUser, userB: $1).overall
             }
 
         } catch {
@@ -311,6 +569,25 @@ final class MatchManager: ObservableObject {
 
     private func handleProximityEvent(_ event: ProximityEvent) {
         guard let currentUser = activeQuestUser else { return }
+
+        // Off campus, outside every live fence: no proximity event means
+        // anything. Dropped before the match lookup, the cooldown bookkeeping or
+        // the Firestore read.
+        let scope = communityScope
+        guard scope.allowsQuestMode else { return }
+
+        // Same-school check at the edge. A BLE or UWB advertisement can come
+        // from anyone standing nearby, including someone from another campus, so
+        // the school on the event is checked before anything else happens.
+        if let partnerSchoolId = event.partnerSchoolId {
+            switch scope {
+            case .campus(let schoolId):
+                guard partnerSchoolId == schoolId else { return }
+            case .springBreak, .none:
+                break   // Cross-school is legitimate here; canShare re-checks below.
+            }
+        }
+
         guard let match = activeMatches.first(where: { $0.id == event.matchID }) else { return }
 
         // Cheap synchronous pre-checks — run before any Firestore round-trip.
@@ -384,11 +661,13 @@ final class MatchManager: ObservableObject {
                     self.nearbyMatchProfile = partnerProfile
                 }
 
-                // Record alert via AlertCapManager (replaces legacy recordAlert)
+                // Record the alert. AlertCapManager only spends a Dating
+                // allowance when the match is Dating-gated; a Study encounter
+                // costs nothing against the asymmetric caps.
                 Task {
                     await self.alertCapManager.recordAlertSent(
                         for: currentUser.uid,
-                        matchID: event.matchID
+                        match: updated
                     )
                 }
                 self.recordCooldown(for: event.matchID)
@@ -587,8 +866,13 @@ final class MatchManager: ObservableObject {
                 }
             }
 
+            // Deliberately no write. trustLevel is server-owned: it is derived
+            // by studentIdVerification.ts from verification depth and by the
+            // rating pipeline from post-meet accuracy, and firestore.rules
+            // rejects a client write to it. Recomputing it here is now only
+            // useful for showing the user what they are about to be granted.
             if level != profile.trustLevel {
-                try await firestoreService.updateTrustLevel(uid: uid, level: level)
+                Log.match.debug("Local trust recalculation differs from server value")
             }
         } catch {
             Log.match.error("Trust recalculation failed: \(error)")
@@ -618,20 +902,37 @@ final class MatchManager: ObservableObject {
 
         alertCapManager.updateUserCaps(for: currentUser)
 
-        // Viewer-level gates: asymmetric daily alert cap + women-first queuing.
-        guard alertCapManager.canSendAlert(for: currentUser, match: nil) else {
-            demoStatusMessage = "Daily alert cap reached (\(alertCapManager.getCurrentDailyLimit())/day). Caps are lower for women by design."
-            return
-        }
-        guard balanceEnforcer.shouldShowMatch(to: currentUser) else {
-            demoStatusMessage = "Held by the women-first queue — the local ratio is male-skewed right now."
-            return
-        }
+        // Viewer-level gates. Both are Dating-only, so they are consulted only
+        // once the demo knows the pair's locked intents — see below.
 
         // Candidate selection via real scoring + vibe + safety filters.
         guard let (candidate, breakdown) = selectDemoMatch(for: currentUser) else {
             demoStatusMessage = "No compatible match nearby right now — try adjusting your preferences."
             return
+        }
+
+        // The demo runs the real intent lock, so the walkthrough shows the same
+        // Dating / non-Dating behaviour production would.
+        let lockedIntents = EncounterSession.lockIntents(currentUser, candidate)
+        let datingGated = EncounterSession.locksDatingGate(currentUser, candidate)
+
+        guard !lockedIntents.isEmpty else {
+            demoStatusMessage = "No shared intent with anyone nearby — try adding Hangout or Study."
+            return
+        }
+
+        if datingGated {
+            guard alertCapManager.canSendAlert(for: currentUser,
+                                               match: nil,
+                                               lockedIntents: lockedIntents) else {
+                let cap = alertCapManager.currentDatingDailyLimit().map(String.init) ?? "your"
+                demoStatusMessage = "Daily Dating alert cap reached (\(cap)/day). Caps are lower for women by design, and they apply to Dating only."
+                return
+            }
+            guard balanceEnforcer.shouldShowMatch(to: currentUser) else {
+                demoStatusMessage = "Held by the women-first queue — the campus Dating ratio is male-skewed right now."
+                return
+            }
         }
 
         demoStatusMessage = nil
@@ -643,7 +944,9 @@ final class MatchManager: ObservableObject {
         // Route reveal state through the real stage machine, minus Firestore.
         RevealManager.shared.isDemoMode = true
 
-        Log.match.debug("Demo match: \(candidate.displayName), score=\(String(format: "%.2f", breakdown.overall)), cap=\(alertCapManager.getCurrentDailyLimit())")
+        // No display name in the log: this file's compliance block says analytics
+        // and logs carry no PII, and a match's name is exactly that.
+        Log.match.debug("Demo match selected, score=\(String(format: "%.2f", breakdown.overall)), datingGated=\(datingGated)")
 
         let match = Match(
             id: "demo_match_\(UUID().uuidString.prefix(8))",
@@ -654,6 +957,13 @@ final class MatchManager: ObservableObject {
             status: .inProximity,
             createdAt: Date(),
             meetupOccurred: false,
+            schoolId: currentUser.schoolId ?? "",
+            partnerSchoolId: candidate.schoolId ?? "",
+            scope: communityScope.isSpringBreak ? .springBreak : .campus,
+            springBreakDestinationID: nil,
+            campusId: currentUser.schoolId,
+            lockedIntents: lockedIntents,
+            isDatingGated: datingGated,
             revealStage: .blurred
         )
 
@@ -664,7 +974,7 @@ final class MatchManager: ObservableObject {
         isDemoEncounterActive = true
 
         // Record the alert through the real cap manager (Firestore sync no-ops for the mock).
-        Task { await alertCapManager.recordAlertSent(for: currentUser.uid, matchID: match.id) }
+        Task { await alertCapManager.recordAlertSent(for: currentUser.uid, match: match) }
 
         // Open the blurred session, then simulate the walk-up.
         Task {
@@ -734,9 +1044,12 @@ final class MatchManager: ObservableObject {
     /// RevealManager gate (which only permits completion from `.revealed`).
     func demoNameDrop() {
         guard var match = nearbyMatch,
+              let currentUser = activeQuestUser,
               let sessionID = RevealManager.shared.activeSessions[match.id]?.id else { return }
         Task {
-            await RevealManager.shared.completeReveal(for: sessionID)
+            // Runs the real face-match gate: the demo cannot NameDrop from an
+            // account production would refuse.
+            await RevealManager.shared.completeReveal(for: sessionID, currentUser: currentUser)
             match.status = .connected
             match.revealStage = .connected
             nearbyMatch = match
@@ -764,7 +1077,9 @@ final class MatchManager: ObservableObject {
     func endDemoEncounter() {
         let matchID = nearbyMatch?.id
         Task {
-            if let matchID { await RevealManager.shared.endSession(for: matchID) }
+            if let matchID {
+                await RevealManager.shared.endSession(for: matchID, reason: .pass)
+            }
             RevealManager.shared.isDemoMode = false
         }
 
@@ -800,6 +1115,11 @@ final class MatchManager: ObservableObject {
         let scored: [(UserProfile, ScoreBreakdown)] = pool.compactMap { candidate in
             guard candidate.accountStatus == .active else { return nil }
             guard SafetyVerifier.isSafeToAlert(candidate) else { return nil }
+            // The demo runs the real community gate too, so a bypass build cannot
+            // show a pairing production would refuse.
+            guard CommunityGate.canShare(viewer: currentUser,
+                                         candidate: candidate,
+                                         in: communityScope) else { return nil }
             guard scoreVibeCompatibility(currentUser.intentVibes, candidate.intentVibes) >= 0.6 else { return nil }
             let breakdown = computeCompatibilityScore(userA: currentUser, userB: candidate)
             guard breakdown.overall >= currentUser.preferences.compatibilityThreshold else { return nil }

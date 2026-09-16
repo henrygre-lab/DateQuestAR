@@ -1,7 +1,20 @@
+// MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
+// [x] No hardcoded secrets, API keys, or tokens
+// [x] This is the OPTIONAL extra document check, not the campus gate. Quest Mode,
+//     the Dating intent and NameDrop all read studentIDStatus, which only
+//     submitStudentIDVerification can set — nothing here opens any of them.
+// [x] verifyIdentity proxies through a Cloud Function; the provider API key never
+//     reaches the client
+// [x] The badge shown is the server's answer; no client-side promotion
+// [x] No PII rendered or logged
+
 import SwiftUI
 
 // MARK: - Verification Upsell Card
 
+/// The optional third-party document check, offered after the campus gates are
+/// already satisfied. Deliberately does not promise access — the student ID check
+/// is what opens things, and this sits on top of it.
 struct VerificationUpsellCard: View {
     @StateObject private var verifier = SafetyVerifier()
     @Environment(\.dq) private var p
@@ -16,10 +29,11 @@ struct VerificationUpsellCard: View {
                     .foregroundStyle(p.verify)
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Get verified")
+                    Text("Add an extra verification")
                         .font(DQFont.uiSized(14, .semibold))
                         .foregroundStyle(p.text)
-                    Text("Verified users get 2x visibility and a trust badge")
+                    Text("Optional. Your student ID already covers Quest Mode — "
+                         + "this adds a second trust signal on your profile.")
                         .font(DQFont.uiSized(11.5, .medium))
                         .foregroundStyle(p.text2)
                         .fixedSize(horizontal: false, vertical: true)
