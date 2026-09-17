@@ -146,7 +146,7 @@ struct HomeView: View {
         .accessibilityElement(children: .contain)
     }
 
-    /// Aggregate balance signal. Escalates by contrast, not hue — ember stays
+    /// Aggregate balance readout. Escalates by contrast, not hue — signal stays
     /// reserved for progress and commitment.
     private var ratioChip: some View {
         let femalePct = Int((1.0 - balanceEnforcer.currentRatio) * 100)
@@ -172,7 +172,7 @@ struct HomeView: View {
                 .foregroundStyle(p.text2)
                 .frame(width: DQSize.minHitTarget, height: DQSize.minHitTarget)
                 .background(Circle().fill(p.surface2))
-                .overlay(Circle().strokeBorder(p.ember, lineWidth: 2))
+                .overlay(Circle().strokeBorder(p.signal, lineWidth: 2))
         }
         .accessibilityLabel("Account menu for \(displayName)")
     }

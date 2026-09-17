@@ -6,8 +6,8 @@
 //  │                                                                      │
 //  │  • v1 — `enum DQ` in Utilities/DesignSystem.swift. Legacy. Dark-only, │
 //  │    purple accent, static namespaced constants (`DQ.Colors.accent`).   │
-//  │    Still read by 17 files.                                           │
-//  │  • v2 — this file. Dual-theme, ember accent, read from the            │
+//  │    Still read by 15 files.                                           │
+//  │  • v2 — this file. Dual-theme, signal + ember accents, read from      │
 //  │    environment: `@Environment(\.dq)` for colour, `DQRadius`/`DQSpace`/ │
 //  │    `DQSize` for geometry, `DQFont` for type.                          │
 //  │                                                                      │
@@ -37,6 +37,13 @@ public struct DQPalette: Sendable {
     public let line, lineStrong, track: Color
 
     // Accents
+    //
+    // `signal` is the app's ambient accent: presence, scanning, liveness —
+    // fills, rings and dots. `ember` is the encounter's commitment accent and
+    // is spent, deliberately, in exactly four places (see §1 of
+    // docs/DESIGN_SYSTEM.md). If a surface is not one of those four, it takes
+    // signal.
+    public let signal, signalSoft, signalLine, signalText, signalGlow: Color
     public let ember, emberSoft, emberLine, emberText, emberGlow: Color
     public let verify, live, liveText, danger: Color
 
@@ -54,6 +61,8 @@ public struct DQPalette: Sendable {
         bg: .hex(0x101113), surface: .hex(0x1A1B1E), surface2: .hex(0x24262A),
         text: .hex(0xF6F7F8), text2: .hex(0x9BA0A8), text3: .hex(0x6A6F77),
         line: .white.opacity(0.09), lineStrong: .white.opacity(0.18), track: .white.opacity(0.12),
+        signal: .hex(0x2EE6D6), signalSoft: .hex(0x2EE6D6, 0.16), signalLine: .hex(0x2EE6D6, 0.38),
+        signalText: .hex(0x2EE6D6), signalGlow: .hex(0x2EE6D6, 0.32),
         ember: .hex(0xF2683C), emberSoft: .hex(0xF2683C, 0.16), emberLine: .hex(0xF2683C, 0.38),
         emberText: .hex(0xFF8A5F), emberGlow: .hex(0xF2683C, 0.32),
         verify: .hex(0x2E9BF0), live: .hex(0x4ADE80), liveText: .hex(0x4ADE80), danger: .hex(0xE5484D),
@@ -69,6 +78,8 @@ public struct DQPalette: Sendable {
         bg: .hex(0xEFEFF1), surface: .white, surface2: .hex(0xF5F5F7),
         text: .hex(0x16171A), text2: .hex(0x6E727A), text3: .hex(0x767B84),
         line: .hex(0x14161A, 0.09), lineStrong: .hex(0x14161A, 0.18), track: .hex(0x14161A, 0.10),
+        signal: .hex(0x0E8F8A), signalSoft: .hex(0x0E8F8A, 0.11), signalLine: .hex(0x0E8F8A, 0.30),
+        signalText: .hex(0x0A6E6A), signalGlow: .hex(0x0E8F8A, 0.30),
         ember: .hex(0xF2683C), emberSoft: .hex(0xF2683C, 0.11), emberLine: .hex(0xF2683C, 0.30),
         emberText: .hex(0xD2481F), emberGlow: .hex(0xF2683C, 0.30),
         verify: .hex(0x2E9BF0), live: .hex(0x3E9E63), liveText: .hex(0x2F8F55), danger: .hex(0xE5484D),
@@ -456,17 +467,41 @@ public enum DQTrustTier: Int, CaseIterable, Sendable {
 
 /// The **single** place the app's theme is decided.
 ///
-/// Apply it once, at the app root, with `.dqTheme(DQThemePreference.resolved)`.
+/// Apply it once, at the app root, with `.dqFollowSystemTheme()`.
 /// Never pin a theme per surface: a screen that hard-codes its own palette can
 /// never follow a user-facing appearance setting, and shipping one is the whole
 /// reason this system carries two palettes.
 ///
-/// Pinned dark for now because the un-migrated v1 surfaces are dark-only — a
-/// light theme would render half the app wrong. When the migration finishes and
-/// an appearance setting lands, read it here and every v2 surface follows with
-/// no other change.
-public enum DQThemePreference {
-    public static var resolved: DQTheme { .dark }
+/// No longer pinned dark. `DQAppearance` is the user's choice, `preferredColorScheme`
+/// hands it to UIKit, and `dqFollowSystemTheme` reads the resulting environment
+/// `colorScheme` back — so `.system` resolves to whatever the device is doing
+/// and the two palettes can never drift apart from what is on screen.
+public enum DQAppearance: String, CaseIterable, Sendable, Identifiable {
+    case system, light, dark
+
+    public var id: String { rawValue }
+
+    /// The `UserDefaults` key. Public so Settings and the app root agree on it
+    /// without either one re-spelling a string literal.
+    public static let storageKey = "dq.appearance"
+
+    public var label: String {
+        switch self {
+        case .system: "System"
+        case .light: "Light"
+        case .dark: "Dark"
+        }
+    }
+
+    /// `nil` means "follow the device", which is exactly what
+    /// `preferredColorScheme` wants for the system case.
+    public var preferredColorScheme: ColorScheme? {
+        switch self {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
+        }
+    }
 }
 
 private struct DQThemeKey: EnvironmentKey {
@@ -481,8 +516,26 @@ public extension EnvironmentValues {
     var dq: DQPalette { .of(dqTheme) }
 }
 
+/// Binds the v2 palette to the environment `colorScheme`.
+///
+/// Must be applied *inside* the window and below `preferredColorScheme`: that
+/// call is what sets the `colorScheme` this reads back. Going through the
+/// environment rather than reading `DQAppearance` directly is deliberate — it
+/// means `.system` needs no special case here, and the palette cannot disagree
+/// with the `colorScheme` that UIKit surfaces are already drawing against.
+private struct DQFollowSystemTheme: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        content.dqTheme(colorScheme == .dark ? .dark : .light)
+    }
+}
+
 public extension View {
     func dqTheme(_ theme: DQTheme) -> some View { environment(\.dqTheme, theme) }
+
+    /// The one theme call the app root should make.
+    func dqFollowSystemTheme() -> some View { modifier(DQFollowSystemTheme()) }
 
     func dqShadow(_ shadow: DQShadow) -> some View {
         self.shadow(color: shadow.color, radius: shadow.radius, x: 0, y: shadow.y)

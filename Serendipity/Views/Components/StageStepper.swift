@@ -2,8 +2,8 @@ import SwiftUI
 
 /// Four-segment progress indicator for the encounter reveal ladder:
 /// Nearby → Icebreaker → Revealed → Connected (§5 StageStepper).
-/// Completed and current segments are `ember`; the current one also carries the
-/// ember glow. Presentational only — pass the current `RevealStage`.
+/// Completed and current segments are `signal`; the current one also carries the
+/// signal glow. Presentational only — pass the current `RevealStage`.
 struct StageStepper: View {
     let current: RevealStage
 
@@ -16,10 +16,10 @@ struct StageStepper: View {
             HStack(spacing: 6) {
                 ForEach(stages, id: \.rawValue) { stage in
                     Capsule()
-                        .fill(reached(stage) ? p.ember : p.track)
+                        .fill(reached(stage) ? p.signal : p.track)
                         .frame(height: DQSize.stepperHeight)
-                        // §5: the current segment gets `0 0 12px emberGlow`.
-                        .shadow(color: isCurrent(stage) ? p.emberGlow : .clear, radius: 6)
+                        // §5: the current segment gets a 12px glow, now in signal.
+                        .shadow(color: isCurrent(stage) ? p.signalGlow : .clear, radius: 6)
                 }
             }
 
@@ -29,7 +29,7 @@ struct StageStepper: View {
                         .font(DQFont.labelSized(8.5))
                         .tracking(DQFont.track(8.5, em: 0.08))
                         .textCase(.uppercase)
-                        .foregroundStyle(reached(stage) ? p.emberText : p.text3)
+                        .foregroundStyle(reached(stage) ? p.signalText : p.text3)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
                         .frame(maxWidth: .infinity, alignment: .leading)

@@ -367,7 +367,7 @@ struct EncounterView: View {
 
     private var loadingState: some View {
         VStack(spacing: 12) {
-            ProgressView().tint(p.ember)
+            ProgressView().tint(p.signal)
             Text("Finding a match nearby…")
                 .font(DQFont.body)
                 .foregroundStyle(p.text2)

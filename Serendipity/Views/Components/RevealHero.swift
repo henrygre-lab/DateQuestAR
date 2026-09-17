@@ -108,14 +108,20 @@ struct RevealHero: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
 
-            // `verify` is reserved for identity verification — only show the
-            // check when the partner actually cleared it.
+            // Only show the check when the partner actually cleared verification.
+            //
+            // Ink on a neutral disc, not `verify` blue. A blue badge reads as a
+            // platform trust mark — the thing Twitter and Instagram sell — and
+            // this one means something narrower and local: this person's student
+            // ID matched their selfie. Neutral says "confirmed" without
+            // borrowing authority the badge does not have.
             if isIDVerified {
                 Image(systemName: "checkmark")
                     .font(.system(size: 11, weight: .heavy))
-                    .foregroundStyle(DQGlass.ink)
+                    // Dark in both palettes, which is what a white disc needs.
+                    .foregroundStyle(p.navActiveInk)
                     .frame(width: 22, height: 22)
-                    .background(Circle().fill(p.verify))
+                    .background(Circle().fill(DQGlass.ink))
             }
         }
         .transition(.opacity)

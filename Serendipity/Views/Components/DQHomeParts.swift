@@ -4,7 +4,7 @@ import SwiftUI
 //
 // All read `@Environment(\.dq)`; no view here names a hex.
 
-/// §5 QuestCard. The only ember-bordered surface in the app, and the hero of
+/// §5 QuestCard. The only signal-bordered surface in the app, and the hero of
 /// HomeView. The 3px sweeping bar on the top edge is an indeterminate "active"
 /// signal — it reports that scanning is running, not how far along it is.
 struct QuestCard: View {
@@ -50,13 +50,13 @@ struct QuestCard: View {
                 VStack(spacing: 10) {
                     Toggle("", isOn: Binding(get: { isActive }, set: onToggle))
                         .labelsHidden()
-                        .tint(p.ember)
+                        .tint(p.signal)
                         .fixedSize()
                         .accessibilityLabel("Quest Mode")
                         .accessibilityHint("Double tap to toggle quest scanning")
 
                     if isActive {
-                        RadarPulse(color: p.ember, ringSize: 20, dotSize: 10, extent: 52)
+                        RadarPulse(color: p.signal, ringSize: 20, dotSize: 10, extent: 52)
                     }
                 }
             }
@@ -80,10 +80,10 @@ struct QuestCard: View {
         }
         .overlay(
             RoundedRectangle(cornerRadius: DQRadius.hero, style: .continuous)
-                // The ember border, the sweep and the pulse are the signal that
+                // The signal border, the sweep and the pulse are what say
                 // the app is live. A card that looks identical when off is a
                 // bug — inactive drops all three back to a plain surface.
-                .strokeBorder(isActive ? p.emberLine : p.line, lineWidth: 1)
+                .strokeBorder(isActive ? p.signalLine : p.line, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: DQRadius.hero, style: .continuous))
         .dqShadow(.standard(theme))
@@ -92,7 +92,7 @@ struct QuestCard: View {
     private var sweepBar: some View {
         GeometryReader { geo in
             Capsule()
-                .fill(p.ember)
+                .fill(p.signal)
                 .frame(width: geo.size.width * 0.34)
                 .offset(x: sweepOffset(in: geo.size.width))
                 .animation(

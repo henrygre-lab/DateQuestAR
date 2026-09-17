@@ -38,7 +38,7 @@ extension UserProfile.TrustLevel {
 
 // MARK: - Buttons (§5)
 
-/// Primary / neutral / ghost pills. One primary per screen; ember is reserved
+/// Primary / neutral / ghost pills. One primary per screen; ember is reserved for NameDrop
 /// for the commit action.
 struct DQPillButtonStyle: ButtonStyle {
     enum Kind { case ember, neutral, ghost, danger }
@@ -157,7 +157,7 @@ struct DQIconButton: View {
 // MARK: - Chips (§5)
 
 /// On-surface chip. `selected` uses the `cta` fill so it reads as a choice,
-/// not as progress — ember stays reserved for commitment.
+/// not as progress — ember stays reserved for the four commitment surfaces.
 struct DQChip: View {
     let text: String
     var selected: Bool = false
@@ -202,7 +202,7 @@ struct GlassChip: View {
 // MARK: - RevealMeter (§5)
 
 /// Both §5 variants. `overPhoto` is a glass pill with a white track and fill;
-/// `onSurface` sits on a card with the `track` background and an `ember` fill.
+/// `onSurface` sits on a card with the `track` background and a `signal` fill.
 struct RevealMeter: View {
     enum Style { case overPhoto, onSurface }
 
@@ -226,7 +226,7 @@ struct RevealMeter: View {
                 ZStack(alignment: .leading) {
                     Capsule().fill(style == .overPhoto ? DQGlass.meterTrack : p.track)
                     Capsule()
-                        .fill(style == .overPhoto ? DQGlass.ink : p.ember)
+                        .fill(style == .overPhoto ? DQGlass.ink : p.signal)
                         .frame(width: geo.size.width * clamped)
                 }
             }
@@ -234,7 +234,7 @@ struct RevealMeter: View {
 
             Text("\(pct)%")
                 .font(DQFont.uiSized(style == .overPhoto ? 12 : 11, .heavy))
-                .foregroundStyle(style == .overPhoto ? DQGlass.ink : p.emberText)
+                .foregroundStyle(style == .overPhoto ? DQGlass.ink : p.signalText)
                 .monospacedDigit()
         }
         .modifier(RevealMeterChrome(style: style))
@@ -310,7 +310,7 @@ struct RatingBar: View {
             HStack(spacing: 6) {
                 ForEach(1...5, id: \.self) { step in
                     Capsule()
-                        .fill(step <= value ? p.ember : p.track)
+                        .fill(step <= value ? p.signal : p.track)
                         .frame(height: DQSize.ratingSegment)
                         .frame(maxWidth: .infinity, minHeight: DQSize.minHitTarget)
                         .contentShape(Rectangle())
@@ -352,7 +352,7 @@ struct LiveDot: View {
 }
 
 /// Radar pulse: two rings, scale 0.6 → 2.4, opacity 0.65 → 0, offset 1.3s.
-/// White over imagery (the encounter hero); ember on a surface (the quest card).
+/// White over imagery (the encounter hero); signal on a surface (the quest card).
 struct RadarPulse: View {
     var color: Color = DQGlass.pulse
     var ringSize: CGFloat = 16

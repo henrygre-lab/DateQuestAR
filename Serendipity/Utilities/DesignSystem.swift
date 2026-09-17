@@ -8,7 +8,7 @@ import SwiftUI
 // │  • v1 — this file. `enum DQ`, dark-only, purple accent, reached as    │
 // │    static constants: `DQ.Colors.accent`, `DQ.Spacing.xl`. Still read  │
 // │    by 17 files, which is why it is still here.                       │
-// │  • v2 — Utilities/DQDesignSystem.swift. Dual-theme, ember accent,     │
+// │  • v2 — Utilities/DQDesignSystem.swift. Dual-theme, signal accent,    │
 // │    read from the environment: `@Environment(\.dq)` for colour,        │
 // │    `DQRadius`/`DQSpace`/`DQSize` for geometry, `DQFont` for type.     │
 // │                                                                      │

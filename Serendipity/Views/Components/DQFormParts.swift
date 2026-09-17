@@ -7,7 +7,7 @@ import SwiftUI
 // `@Environment(\.dq)`; no view in this file names a hex.
 //
 // Standing rules these encode, so they cannot drift per screen:
-//  • Focus is neutral (`cta`), never ember. Ember appears in a form in exactly
+//  • Focus is neutral (`cta`), never an accent. Signal appears in a form in exactly
 //    one place — a value being tuned live (the slider fill and its readout).
 //  • Values are mono, words are Jakarta.
 //  • Rows carry no icons. Leading glyphs stay reserved for trust, live and
@@ -181,7 +181,7 @@ struct DQToggleRow: View {
         DQRow(label: label, sublabel: sublabel) {
             Toggle("", isOn: $isOn)
                 .labelsHidden()
-                .tint(p.ember)
+                .tint(p.signal)
                 .fixedSize()
         }
         .accessibilityElement(children: .combine)
@@ -247,7 +247,7 @@ struct DQStepperRow: View {
     }
 }
 
-/// The one place ember belongs in a form: a value being tuned live.
+/// The one place an accent belongs in a form: a value being tuned live, in signal.
 struct DQSliderRow: View {
     let label: String
     var sublabel: String?
@@ -275,7 +275,7 @@ struct DQSliderRow: View {
                 Spacer(minLength: 0)
                 Text(format(value))
                     .font(DQFont.monoSized(13, .medium))
-                    .foregroundStyle(p.emberText)
+                    .foregroundStyle(p.signalText)
             }
 
             DQSliderTrack(value: $value, range: range, step: step)
@@ -316,7 +316,7 @@ private struct DQSliderTrack: View {
             ZStack(alignment: .leading) {
                 Capsule().fill(p.track).frame(height: 6)
                 Capsule()
-                    .fill(p.ember)
+                    .fill(p.signal)
                     .frame(width: knob / 2 + travel * fraction, height: 6)
                 Circle()
                     .fill(p.surface)
@@ -385,7 +385,7 @@ struct DQSegmentedPicker<Option: Hashable>: View {
 //
 // A field looks the same wherever it sits — `surface2` fill and a `line` border
 // on `bg` and inside a `surface` card alike. Focus takes the border to 1.5pt
-// `cta`: neutral, never ember, no glow.
+// `cta`: neutral, never an accent, no glow.
 
 struct DQTextField: View {
     var label: String = ""
@@ -662,7 +662,7 @@ struct DQTopBarAction: View {
         Button(action: action) {
             Text(title)
                 .font(DQFont.uiSized(13, .semibold))
-                .foregroundStyle(p.emberText)
+                .foregroundStyle(p.signalText)
                 .frame(minHeight: DQSize.minHitTarget)
                 .contentShape(Rectangle())
         }
@@ -814,7 +814,7 @@ struct DQSkeleton: View {
 //
 // Onboarding step progress. The current step elongates to a pill and that
 // elongation is the *only* state difference, so a dot row can never be misread
-// as a filled meter. Neutral throughout — no ember, no fill sweep, no
+// as a filled meter. Neutral throughout — no accent, no fill sweep, no
 // connecting line. Display only: reverse navigation is `DQTopBar`'s job.
 //
 // `StageStepper` is deliberately not reused here — it reads as reveal progress.
@@ -959,7 +959,7 @@ struct DQBlockingSave: ViewModifier {
         .accessibilityAddTraits(.updatesFrequently)
     }
 
-    /// Track ring with a `text` head. Never ember — ember is not a waiting
+    /// Track ring with a `text` head. Never an accent — neither accent is a waiting
     /// colour. Kept spinning under Reduce Motion: it is the only signal the app
     /// is still alive.
     private var spinner: some View {

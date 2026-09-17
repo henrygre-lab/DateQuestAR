@@ -39,6 +39,10 @@ struct SettingsView: View {
     @State private var globalPauseEnabled = false
     @State private var selectedIntents: Set<Intent> = Set(Intent.defaults)
 
+    /// Appearance is the one setting here that is device-local rather than
+    /// account state, so it lives in `UserDefaults` and never reaches Firestore.
+    @AppStorage(DQAppearance.storageKey) private var appearanceRaw = DQAppearance.system.rawValue
+
     private let allVibes = [
         "Chill hangout", "Deep conversation", "Adventure buddy",
         "Coffee date", "Group outing", "Creative collab",
@@ -62,6 +66,7 @@ struct SettingsView: View {
                         intentSection
                         balanceAndSafetySection
                         privacySection
+                        appearanceSection
                         autoPauseSection
                         safetySection
                         accountSection
@@ -168,6 +173,18 @@ struct SettingsView: View {
                         )
                     )
                     .disabled(locked)
+                    // A locked intent is *unavailable*, not active — so it takes
+                    // a dashed `text3` outline and never `signal`. Signal means
+                    // something is live; painting a gate with it would say the
+                    // opposite of what the row means.
+                    .overlay(
+                        RoundedRectangle(cornerRadius: DQRadius.row, style: .continuous)
+                            .strokeBorder(
+                                locked ? p.text3 : .clear,
+                                style: StrokeStyle(lineWidth: 1, dash: [4, 3])
+                            )
+                            .padding(.horizontal, DQFormMetrics.inset / 2)
+                    )
                 }
             }
 
@@ -336,6 +353,26 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Appearance
+
+    /// Three options rather than a Light/Dark switch: without `System` the app
+    /// cannot follow the device, which is the setting most people never touch
+    /// and the one that has to be the default.
+    private var appearanceSection: some View {
+        VStack(spacing: 0) {
+            DQSectionHeader(title: "Appearance")
+
+            DQSegmentedPicker(
+                options: DQAppearance.allCases,
+                title: { $0.label },
+                selection: Binding(
+                    get: { DQAppearance(rawValue: appearanceRaw) ?? .system },
+                    set: { appearanceRaw = $0.rawValue }
+                )
+            )
+        }
+    }
+
     // MARK: - Auto-Pause Zones
 
     private var autoPauseSection: some View {
@@ -353,7 +390,7 @@ struct SettingsView: View {
                                 set: { _ in /* update zone */ }
                             ))
                             .labelsHidden()
-                            .tint(p.ember)
+                            .tint(p.signal)
                             .fixedSize()
                         }
                     }

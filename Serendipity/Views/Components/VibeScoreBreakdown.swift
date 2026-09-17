@@ -92,7 +92,7 @@ struct VibeScoreBreakdown: View {
                 ZStack(alignment: .leading) {
                     Capsule().fill(p.track)
                     Capsule()
-                        .fill(p.ember)
+                        .fill(p.signal)
                         .frame(width: geo.size.width * clamped)
                 }
             }

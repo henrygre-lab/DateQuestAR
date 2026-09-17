@@ -88,12 +88,13 @@ struct ConnectedChatView: View {
                         .font(DQFont.titleS)
                         .tracking(DQFont.trackTitleS)
                         .foregroundStyle(p.text)
+                    // Ink on a neutral disc, not `verify` blue — see RevealHero.
                     if isIDVerified {
                         Image(systemName: "checkmark")
                             .font(.system(size: 9, weight: .heavy))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(p.text)
                             .frame(width: 17, height: 17)
-                            .background(Circle().fill(p.verify))
+                            .background(Circle().fill(p.surface2))
                     }
                 }
                 HStack(spacing: 6) {
@@ -202,7 +203,7 @@ struct ConnectedChatView: View {
                     .font(.system(size: 15, weight: .bold))
                     .foregroundStyle(.white)
                     .frame(width: 42, height: 42)
-                    .background(Circle().fill(p.ember))
+                    .background(Circle().fill(p.signal))
             }
             .buttonStyle(.plain)
             .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -211,8 +212,8 @@ struct ConnectedChatView: View {
         }
         .padding(8)
         // Glass, not `surface2`: the composer is pinned chrome that the
-        // transcript scrolls under. The send button stays a solid ember disc —
-        // it is the commit action, and ember has to read at full strength.
+        // transcript scrolls under. The send button stays a solid signal disc —
+        // it is the commit action, and the accent has to read at full strength.
         .dqGlass()
     }
 }
@@ -235,7 +236,7 @@ private struct ChatBubble: View {
                 .padding(.vertical, 13)
                 .background {
                     if message.isOutgoing {
-                        BubbleShape(isOutgoing: true).fill(p.ember)
+                        BubbleShape(isOutgoing: true).fill(p.signal)
                     } else {
                         BubbleShape(isOutgoing: false).fill(p.surface)
                             .overlay(BubbleShape(isOutgoing: false).strokeBorder(p.line, lineWidth: 1))

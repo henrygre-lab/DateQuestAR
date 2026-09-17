@@ -167,14 +167,14 @@ struct WordChainPill: View {
             .foregroundStyle(p.text)
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(Capsule().fill(owner == .yours ? p.emberSoft : p.surface2))
+            .background(Capsule().fill(owner == .yours ? p.signalSoft : p.surface2))
             .overlay(Capsule().strokeBorder(borderColor, lineWidth: 1))
             .accessibilityLabel(accessibilityText)
     }
 
     private var borderColor: Color {
         switch owner {
-        case .yours: p.emberLine
+        case .yours: p.signalLine
         case .open:  p.lineStrong
         case .theirs: p.line
         }

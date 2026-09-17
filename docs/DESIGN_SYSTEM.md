@@ -18,15 +18,48 @@ Everything below is expressed as a semantic token — never hard-code a raw hex 
 
 | Token | Light | Dark | Use |
 |---|---|---|---|
-| `ember` | `#F2683C` | `#F2683C` | Reveal progress, the commit CTA (NameDrop), correct answers, send buttons. The brand warmth. |
-| `emberSoft` | `rgba(242,104,60,0.11)` | `rgba(242,104,60,0.16)` | Tinted fills behind selected/correct states |
+| `signal` | `#0E8F8A` | `#2EE6D6` | **The app's accent.** Fills, rings and dots: presence, scanning, liveness, progress, selection, sliders, toggles, send. Everything that is not one of the four ember surfaces below. |
+| `signalSoft` | `rgba(14,143,138,0.11)` | `rgba(46,230,214,0.16)` | Tinted fills behind signal-accented states |
+| `signalLine` | `rgba(14,143,138,0.30)` | `rgba(46,230,214,0.38)` | Borders on signal-tinted surfaces |
+| `signalText` | `#0A6E6A` | `#2EE6D6` | Signal-coloured **small text only.** Darker than `signal` in light, where the fill colour on a light surface does not clear contrast at text sizes. Never use it for a fill, and never use `signal` for body-sized text. |
+| `signalGlow` | `rgba(14,143,138,0.30)` | `rgba(46,230,214,0.30)` | Shadow colour under signal elements |
+| `ember` | `#F2683C` | `#F2683C` | **Four surfaces only** — see the rule below. |
+| `emberSoft` | `rgba(242,104,60,0.11)` | `rgba(242,104,60,0.16)` | Tinted fills behind selected / vibe-passed states |
 | `emberLine` | `rgba(242,104,60,0.30)` | `rgba(242,104,60,0.38)` | Borders on ember-tinted surfaces |
 | `emberText` | `#D2481F` | `#FF8A5F` | Ember-coloured **text** (contrast-corrected per theme) |
-| `emberGlow` | `rgba(242,104,60,0.30)` | `rgba(242,104,60,0.32)` | Shadow colour under ember buttons |
-| `verify` | `#2E9BF0` | `#2E9BF0` | Identity verification check **only** |
+| `emberGlow` | `rgba(242,104,60,0.30)` | `rgba(242,104,60,0.32)` | Shadow colour under the NameDrop commit pill |
+| `verify` | `#2E9BF0` | `#2E9BF0` | Legacy identity blue. **Not used by the verified badge** — see below. |
 | `live` | `#3E9E63` | `#4ADE80` | Presence / proximity dots |
 | `liveText` | `#2F8F55` | `#4ADE80` | Live-coloured text |
-| `danger` | `#E5484D` | `#E5484D` | Report / destructive **only** — never decorative. Covers account and data deletion. As row-label ink in a list; as a filled pill **only** inside a confirm step, never on a settings row. |
+| `danger` | `#E5484D` | `#E5484D` | Report / destructive **only** — never decorative. Unsafe Proximity is its one accent use. Also carries genuine error states: inline validation text and the delete-account confirm pill. As row-label ink in a list; as a filled pill **only** inside a confirm step, never on a settings row. |
+
+### The two accents, and why there are two
+
+`signal` is ambient: the app working. Scanning, presence, a value being tuned, a
+thing selected, a message sent. It is the colour the user sees constantly, which
+is exactly why it cannot also mean "this is the moment."
+
+`ember` is spent. It marks the encounter's commitment path and appears in
+**exactly four places**:
+
+1. **The icebreaker meter** — `IcebreakerMeter`, the segmented progress through a challenge.
+2. **The selected mode** — `IcebreakerOptionRow` in its chosen state: `emberSoft` fill, 1.5pt `ember` border, filled `ember` check.
+3. **Vibe-passed** — `FeedbackBanner` on success. A timeout or a neutral result is not vibe-passed and takes `track` / `surface2`.
+4. **NameDrop** — the commit CTA at the `revealed` stage (`usesEmberCTA`), its `emberGlow` shadow, and nothing else.
+
+Anything else that wants an accent takes `signal`. If you are reaching for ember
+on a fifth surface, the answer is signal — an accent that appears everywhere
+stops marking anything, and these four are the only moments the product wants a
+user to feel.
+
+Two specific rules that fall out of this:
+
+- **The verified badge is ink on a neutral disc, never `verify` blue.** A blue
+  check reads as a platform trust mark; this one means something narrower and
+  local — a student ID matched a selfie. Over imagery: white disc, `navActiveInk`
+  glyph. On a surface: `surface2` disc, `text` glyph.
+- **A locked intent is dashed `text3`, never `signal`.** Signal means live.
+  Painting a gate with it says the opposite of what the row means.
 
 ### Surfaces & ink
 
@@ -191,14 +224,14 @@ Reduce Transparency and Increase Contrast are handled by the material; no
 surface branches on them.
 
 ### StageStepper
-4 equal segments, `height 5`, `rPill`, `gap 6`. Completed/current = `ember`; the current segment also gets `shadow: 0 0 12px emberGlow`. Labels below: 8.5px/700, +8% tracking, uppercase — `emberText` when reached, `text3` when not.
+4 equal segments, `height 5`, `rPill`, `gap 6`. Completed/current = `signal`; the current segment also gets `shadow: 0 0 12px signalGlow`. Labels below: 8.5px/700, +8% tracking, uppercase — `signalText` when reached, `text3` when not.
 
 **Not reusable for onboarding.** The stepper reads as *reveal* progress — borrowing it for a signup flow imports a meaning that isn't there. Multi-step onboarding gets a plain dot row instead.
 
 ### RevealMeter
 Two variants.
 - **Over photo:** inside a glass pill tinted `rgba(255,255,255,0.14)`, white track at 24% opacity, white fill, white % label. No border — see the Liquid Glass rules above.
-- **On surface:** `track` background, `ember` fill, `emberText` % label. Bare — no pill, it sits directly on the card.
+- **On surface:** `track` background, `signal` fill, `signalText` % label. Bare — no pill, it sits directly on the card.
 Height 5–6, `rPill`.
 
 ### RevealHero
@@ -215,16 +248,16 @@ Height 5–6, `rPill`.
 
 ### Chip (on surface)
 `padding 9×14`, `rPill`, `surface2` fill, `line` border, `text` ink, 11–12px/600.
-Variants: **selected** = `cta` fill + `ctaText`; **accent** = `emberSoft` + `emberLine` + `emberText`; **removable** prefixes a 11px `✕`.
+Variants: **selected** = `cta` fill + `ctaText`; **accent** = `signalSoft` + `signalLine` + `signalText`; **removable** prefixes a 11px `✕`.
 
 ### Buttons
 - **Primary (commit):** `ember` fill, white text, height 54, `rPill`, `shadow 0 12px 30px emberGlow`. **One per screen, and only for the commit action.**
 - **Primary (neutral progression):** `cta` fill / `ctaText`, height 54, `rPill`, `shadowSm`.
 - **Ghost:** transparent, `1px lineStrong`, `text2`, height 52.
 - **Icon button:** 38–46 circle of interactive glass, `text` glyph. The material supplies what was previously `surface` + `line` + `shadowSm`, and reacts to the press as well.
-- **Send FAB:** 42–48 circle, `ember`, white glyph. **Stays solid** — it is a commit action and ember has to read at full strength.
+- **Send FAB:** 42–48 circle, `signal`, white glyph. **Stays solid** — it is a commit action and the accent has to read at full strength.
 
-The pill buttons stay solid too. `.glass` / `.glassProminent` button styles are **not** used anywhere: the ember commit pill is the loudest thing on its screen by design, and a translucent version of it is a weaker CTA, not a more modern one.
+The pill buttons stay solid too. `.glass` / `.glassProminent` button styles are **not** used anywhere: the ember NameDrop pill is the loudest thing on its screen by design, and a translucent version of it is a weaker CTA, not a more modern one.
 
 ### TierBadge / TrustChip
 Diamond glyph `◆` in the tier colour + tier name. On surface: `surface2` pill + `line` border. On photo: GlassChip.
@@ -234,20 +267,20 @@ Diamond glyph `◆` in the tier colour + tier name. On surface: `surface2` pill 
 `rCard`, `surface`, `line` border, breathing glow animation (`0 0 26px` in the **destination tier's** colour at 40%, 3s ease-in-out) — a Silver upgrade glows silver, not platinum. Shows `◆ {from} → ◆ {to}`, the reason line ("Average rating ≥ 4.0 · upgraded just now"), and a 42px circle filled with the destination tier's fill colour on the right. Takes `from:`/`to:` and fires on any tier increase.
 
 ### VibeScoreBreakdown
-Big number 30px/800 (−3%) + "VIBE MATCH" label. Then rows: 96px label (`text2`) / `track` bar with `ember` fill / right-aligned value.
+Big number 30px/800 (−3%) + "VIBE MATCH" label. Then rows: 96px label (`text2`) / `track` bar with `signal` fill / right-aligned value.
 
-The `emberSoft` percentile chip ("Top 4% nearby") is **optional** — render it only if the model actually carries a percentile. If there is no backing data, omit it and let the number and label sit alone. Do not stretch the remaining content to fill the row, and never fabricate the figure.
+The `signalSoft` percentile chip ("Top 4% nearby") is **optional** — render it only if the model actually carries a percentile. If there is no backing data, omit it and let the number and label sit alone. Do not stretch the remaining content to fill the row, and never fabricate the figure.
 
 ### RatingBar
-5 equal segments, height 9, `rPill`, `gap 6`, `ember` when filled, `track` when not. Numeric value 16px/800 to the right. **No stars.**
+5 equal segments, height 9, `rPill`, `gap 6`, `signal` when filled, `track` when not. Numeric value 16px/800 to the right. **No stars.**
 
 ### IcebreakerOptionRow
 `rRow`, `padding 16×18`. Default: `surface2` + `line` + 600 weight + mono letter (A/B/C/D) in `text3`.
 Correct/selected: `emberSoft` + `1.5px ember` + 700 weight + 22px `ember` circle with white `✓`.
 
 ### WordChainPill / Input
-Chain pills: `rPill`, `padding 10×14`. Theirs = `surface2` + `line`; yours = `emberSoft` + `emberLine`; open slot = 700 weight + `lineStrong`.
-Input: `rPill` row, `surface2`, `1.5px ember`, 42px ember send FAB inset right.
+Chain pills: `rPill`, `padding 10×14`. Theirs = `surface2` + `line`; yours = `signalSoft` + `signalLine`; open slot = 700 weight + `lineStrong`.
+Input: `rPill` row, `surface2`, `1.5px signal`, 42px signal send FAB inset right.
 
 ### Form, auth & system chrome
 
@@ -257,9 +290,9 @@ Built in `Views/Components/DQFormParts.swift`.
 
 **Fields.** Height 52, horizontal padding 16, `rField`. Background is **always** `surface2` with a 1pt `line` border — identical on `bg` and inside a `surface` card; never varied by context. Field label 600/9.5 +16% uppercase `text2`, 7 above; error 500/11 `danger`, 7 below. Focus: 1.5pt `cta` border, caret `text`. Disabled: opacity 0.45, geometry and border unchanged. Text area min height 84, padding 14/16, counter 500/10.5 mono `text3` right-aligned in the label row.
 
-**Controls.** Toggle 51×31, knob 27 white with a soft shadow, on = `ember`, off = `track`. Stepper: 34×34 buttons at radius 11 on `surface`, inside a 4-padded `surface2` track at radius 14; value 500/15 mono, min width 30, centred. Slider: 6pt track, `ember` fill, knob 22 `surface` + 1pt `line` + `shadowSm`; header value 500/13 mono `emberText`. Segmented picker: 4-padded `surface2` track at radius 16, segments radius 12, 11 vertical padding; selected = `cta` + `ctaText` 700/12.5, unselected 600/12.5 `text2`. Stands alone, never inside a group, **2–3 options only** — beyond that the choice belongs in a menu or a pushed list.
+**Controls.** Toggle 51×31, knob 27 white with a soft shadow, on = `signal`, off = `track`. Stepper: 34×34 buttons at radius 11 on `surface`, inside a 4-padded `surface2` track at radius 14; value 500/15 mono, min width 30, centred. Slider: 6pt track, `signal` fill, knob 22 `surface` + 1pt `line` + `shadowSm`; header value 500/13 mono `signalText`. Segmented picker: 4-padded `surface2` track at radius 16, segments radius 12, 11 vertical padding; selected = `cta` + `ctaText` 700/12.5, unselected 600/12.5 `text2`. Stands alone, never inside a group, **2–3 options only** — beyond that the choice belongs in a menu or a pushed list.
 
-**Top bars.** Root title 800/21 at −2.5%. Pushed title 700/15, centred. Back button 38 circle, `surface`, 1pt `line`. Trailing text action 600/13 `emberText`.
+**Top bars.** Root title 800/21 at −2.5%. Pushed title 700/15, centred. Back button 38 circle, `surface`, 1pt `line`. Trailing text action 600/13 `signalText`.
 
 **Auth buttons.** 52pt, pill. Filled = `cta`/`ctaText` 700/14. Ghost = 1pt `lineStrong`, 600/14 `text`, provider glyph 17. Plain text = 44pt, 600/13 `text2`.
 
@@ -267,14 +300,14 @@ Built in `Views/Components/DQFormParts.swift`.
 
 **Skeleton vs spinner is FETCH vs COMMIT, not duration.** A fetch has a known incoming shape, so it skeletons. A commit has no shape to preview — the user is leaving the screen — so it spins, however long it takes. (This supersedes any earlier "under about a second" wording.)
 
-**Step dots** — onboarding step progress. Dots 6, gap 6; the current step elongates to a 20×6 pill, and that elongation is the **only** state difference, so a dot row can never be misread as a filled meter. Completed `text3` · current `text` · upcoming `track`. Neutral throughout — no ember, no fill sweep, no connecting line. Centred, 12 below the top bar and 24 above content. Width animates 0.28s ease-out, colour crossfades on the same curve. No mono "3 of 7" readout — the dots are the count. Not tappable: reverse navigation is the top bar's job. Above ~10 steps it stops scaling; a flow that long needs sections, so assert or clamp rather than render 14 dots.
+**Step dots** — onboarding step progress. Dots 6, gap 6; the current step elongates to a 20×6 pill, and that elongation is the **only** state difference, so a dot row can never be misread as a filled meter. Completed `text3` · current `text` · upcoming `track`. Neutral throughout — no accent, no fill sweep, no connecting line. Centred, 12 below the top bar and 24 above content. Width animates 0.28s ease-out, colour crossfades on the same curve. No mono "3 of 7" readout — the dots are the count. Not tappable: reverse navigation is the top bar's job. Above ~10 steps it stops scaling; a flow that long needs sections, so assert or clamp rather than render 14 dots.
 
 **Blocking save** — a commit the user cannot cancel. `scrimHeavy` + 14 blur over the form, which stays visible beneath at reduced contrast so the user can see what is being saved. Card `rCard`, `surface`, 1pt `line`, padding 24/26, min width 196, `shadow`. Spinner 22 at 2pt stroke — a `track` ring with a `text` head, 0.8s linear. **Never ember: ember is not a waiting colour.** Title 600/13.5 `text`, present continuous ("Creating your profile…"); optional sub-line 500/11.5 `text2`, centred. No cancel button, no progress bar — if the work can be cancelled it is not blocking, and belongs in an inline field state. Minimum 400ms on screen so a fast save does not flash; past 8s the sub-line swaps to "Still working — you can keep waiting or try again later". Never a silent hang. Blocks all input including the back gesture until it resolves or fails.
 
 ### QuestCard
 `rHero`, `surface`, `shadow`. The active-state card for the app's scanning mode.
 
-**Active:** **`emberLine` border** (the only ember-bordered surface in the app), a 3px sweeping `ember` indeterminate bar pinned to the top edge, live dot + state label, ember radar pulse, title describing what is happening, description, constraint chips.
+**Active:** **`signalLine` border** (the only signal-bordered surface in the app), a 3px sweeping `signal` indeterminate bar pinned to the top edge, live dot + state label, signal radar pulse, title describing what is happening, description, constraint chips.
 
 **Inactive:** `line` border, **no sweep bar, no radar pulse**, state label in `text2`. The card must read as unmistakably off — the ember border and the motion are the entire signal that the app is live.
 
@@ -302,7 +335,7 @@ Scrim `rgba(8,9,11,0.66)` + `blur(3)` over the dimmed screen. Sheet: `rSheet` to
 | **HomeView** | Quest mode + nearby signals + demo entry | Quest card is the hero. Nearby signals are blurred photo cards (22–26px) with glass tier chips. Glass tab bar floats over content, which scrolls under it behind a soft scroll-edge effect. |
 | **EncounterView** | The reveal ladder, 4 stages | Top bar → stepper → RevealHero → score/chips (stages 1–3) or rating + tier upgrade (stage 4) → CTA → safety line. CTA copy per stage: `Start icebreaker` / `Resume icebreaker` / `NameDrop to connect` / `Say hello`. Only stage 3 uses the ember CTA. See §6.1 for stage-1 gating, the icebreaker chooser, and the top bar. |
 | **IcebreakerView** | Trivia + Word chain | Persistent partner strip (blurred thumb + live reveal meter) so the unblur is visible during play. Feedback banner above the CTA. |
-| **Connected chat** | Post-NameDrop conversation | Unblurred avatar + verify check, "You connected" summary card, shared-interest chips, persistent safety prompt above the composer. The composer is glass — pinned chrome the transcript scrolls under — with a solid ember send FAB. |
+| **Connected chat** | Post-NameDrop conversation | Unblurred avatar + neutral verified check, "You connected" summary card, shared-interest chips, persistent safety prompt above the composer. The composer is glass — pinned chrome the transcript scrolls under — with a solid signal send FAB. |
 | **Trust centre** | Tier ladder + verification | Current tier card with 4-segment metallic ladder, then a row per tier with its requirement. Closing disclaimer: tiers are not a ranking. |
 | **Safety sheet** | Report / end / share location | Reachable from every encounter via the shield icon button. |
 
@@ -382,9 +415,10 @@ Everything else still goes: neighbourhood, city, venue, building, hall, room, an
 - Let the photo be the largest object on screen at every encounter stage.
 - Keep exactly one primary pill per screen.
 - Use the dark scrim + white text over imagery in both themes.
-- Reserve `ember` for progress and commitment; let neutral `cta` carry ordinary progression.
+- Reserve `ember` for the four commitment surfaces in §1; every other accent is `signal`, and neutral `cta` carries ordinary progression.
+- **Ship both themes.** The app is no longer pinned dark. `DQAppearance` (System / Light / Dark) is stored in `UserDefaults` under `dq.appearance`, `preferredColorScheme` hands it to UIKit, and `dqFollowSystemTheme()` reads the resulting environment `colorScheme` back into the palette. Apply both at the app root, in that order, and never pin a theme on an individual surface — a screen that hard-codes its palette can never follow the setting.
 - Keep the safety line on every pre-connect screen.
-- **Focus is neutral.** A focused field takes a 1.5pt `cta` border — no glow, no ember. Ember appears in a form in exactly one place: a value the user is tuning live (a slider fill and its readout). Not focus, not selection, not validation success.
+- **Focus is neutral.** A focused field takes a 1.5pt `cta` border — no glow, no accent. An accent appears in a form in exactly one place: a value the user is tuning live (a `signal` slider fill and its `signalText` readout). Not focus, not selection, not validation success.
 - **Custom top bars, not `NavigationStack` toolbars.** The floating round back button is the app's language. `NavigationStack` stays where it drives real pushes; its bar is hidden.
 - **Rows carry no icons.** Leading glyphs stay reserved for trust, live and verify states, so they keep meaning something.
 - **In auth, the one primary pill is the neutral filled button.** Every other provider is ghost, and provider colour is confined to the glyph.
@@ -392,7 +426,8 @@ Everything else still goes: neighbourhood, city, venue, building, hall, room, an
 
 **Avoid**
 - Pink/purple gradients, neon, heavy glows.
-- `ember` as a large surface fill — it is an accent.
+- `ember` or `signal` as a large surface fill — both are accents.
+- `signal` on a locked or unavailable control. Locked is dashed `text3`; signal means live.
 - **Glass on the content layer.** Cards, rows, panels, fields, sheets and the blocking-save overlay stay opaque. Glass is what floats *above* content; make everything glass and nothing is floating.
 - **Borders and drop shadows on small glass chrome.** The material already draws an edge and its own separation. Painting another one over it is the look Liquid Glass replaced.
 - Gamified *trust*: badge shelves, tier celebrations, confetti on verification. This is about the trust ladder, not XP — XP may be displayed (mono, neutral ink, plain surface card), just never beside a tier badge, never as a level-up celebration.

@@ -182,7 +182,7 @@ struct SchoolGateView: View {
                                 if selectedSchoolId == school.id {
                                     Image(systemName: "checkmark")
                                         .font(.system(size: 13, weight: .semibold))
-                                        .foregroundStyle(p.ember)
+                                        .foregroundStyle(p.signal)
                                 }
                             }
                             .padding(.horizontal, DQFormMetrics.inset)

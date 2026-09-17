@@ -259,7 +259,7 @@ struct IcebreakerView: View {
                         .textCase(.uppercase)
                         .foregroundStyle(p.text2)
 
-                    // §5 specifies a free-text input with an ember send FAB.
+                    // §5 specifies a free-text input with a signal send FAB.
                     // The chain advances by picking from `challenge.options` —
                     // accepting arbitrary words is a new game rule, not a skin,
                     // so the option rows stay until that logic exists.
