@@ -15,6 +15,7 @@
 //     and Risk #3 (swarm) by rewarding icebreaker/NameDrop completion over passive use
 
 import Foundation
+import FirebaseCore
 import FirebaseAuth
 import Combine
 
@@ -73,6 +74,12 @@ final class XPManager: ObservableObject {
     /// Awards +25 XP on first login today, plus streak milestone bonuses.
     /// Idempotent — calling multiple times in the same day is safe (no duplicate XP).
     func recordDailyLogin() async {
+        // `DateQuestARApp` calls this from `onChange(of: scenePhase)`, so it runs
+        // on every launch — including the XCTest host's, where no
+        // `GoogleService-Info.plist` means `FirebaseApp.configure()` never ran and
+        // `Auth.auth()` would abort the process. Same guard, same reason, as
+        // `AuthViewModel.listenToAuthState()`.
+        guard FirebaseApp.app() != nil else { return }
         guard let uid = Auth.auth().currentUser?.uid else { return }
 
         do {

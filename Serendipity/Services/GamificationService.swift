@@ -30,8 +30,36 @@ final class GamificationService: ObservableObject {
     @Published var activeMultiplier: Double = 1.0
     @Published var recentBadge: BadgeDefinition?
 
-    private let remoteConfig = RemoteConfig.remoteConfig()
-    private let functions = Functions.functions()
+    // Configured on first read rather than in `init()`. The initialiser used to
+    // call `configureRemoteConfig()`, so merely constructing `.shared` resolved a
+    // Firebase handle and started a fetch — which aborts the XCTest host, where
+    // no app is configured. `lazy` is safe here because this type is `@MainActor`;
+    // FirestoreService, which is not, uses a computed handle instead.
+    private lazy var remoteConfig: RemoteConfig = {
+        let config = RemoteConfig.remoteConfig()
+        config.setDefaults([
+            ConfigKey.underrepresentedGenderMultiplier: 1.2 as NSNumber,
+            ConfigKey.femaleAcquisitionBoost: 1.5 as NSNumber
+        ])
+
+        let settings = RemoteConfigSettings()
+        settings.minimumFetchInterval = 3600 // 1 hour in production
+        config.configSettings = settings
+
+        // The same fetch the initialiser used to run, now deferred to first read.
+        // The task body is scheduled, not run inline, so this property is already
+        // assigned by the time `refreshMultiplier()` reads it back — do not
+        // "simplify" this into a synchronous call, which would re-enter the lazy
+        // initialiser.
+        Task { [weak self] in
+            _ = try? await config.fetchAndActivate()
+            self?.refreshMultiplier()
+        }
+
+        return config
+    }()
+
+    private var functions: Functions { Functions.functions() }
     private let analytics = AnalyticsService.shared
 
     // MARK: - Remote Config Keys
@@ -97,30 +125,9 @@ final class GamificationService: ObservableObject {
 
     // MARK: - Init
 
-    private init() {
-        configureRemoteConfig()
-    }
+    private init() {}
 
     // MARK: - Remote Config
-
-    private func configureRemoteConfig() {
-        let defaults: [String: NSObject] = [
-            ConfigKey.underrepresentedGenderMultiplier: 1.2 as NSNumber,
-            ConfigKey.femaleAcquisitionBoost: 1.5 as NSNumber
-        ]
-        remoteConfig.setDefaults(defaults)
-
-        let settings = RemoteConfigSettings()
-        settings.minimumFetchInterval = 3600 // 1 hour in production
-        remoteConfig.configSettings = settings
-
-        Task {
-            _ = try? await remoteConfig.fetchAndActivate()
-            await MainActor.run {
-                self.refreshMultiplier()
-            }
-        }
-    }
 
     /// Reads the underrepresented gender multiplier from Remote Config.
     /// Clamps to 1.0–2.0 to prevent exploitation via tampered config.

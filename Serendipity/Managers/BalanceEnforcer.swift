@@ -45,7 +45,10 @@ final class BalanceEnforcer: ObservableObject {
     // MARK: - Dependencies
 
     private let analytics = AnalyticsService.shared
-    private let db = Firestore.firestore()
+    // Computed, not stored: resolving a Firebase handle at construction
+    // aborts the XCTest host, which launches without a configured app. See
+    // FirestoreService for the full rationale.
+    private var db: Firestore { Firestore.firestore() }
     private var statsListener: ListenerRegistration?
 
     // MARK: - Init
