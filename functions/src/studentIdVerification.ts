@@ -1,7 +1,10 @@
 // MARK: - SECURITY CHECKLIST COMPLIANCE (see docs/SECURITY_CHECKLIST.md)
 // [x] No hardcoded secrets — the face-match provider key is a defineSecret value
-// [x] studentIDStatus, verifiedAge and trustLevel are written ONLY here. The
-//     client cannot set them; firestore.rules rejects every client write to them.
+// [x] studentIDStatus, verifiedAge and trustLevel are promoted ONLY here — the
+//     student ID card photo raises silver, the ID-to-liveness face match raises
+//     gold. schoolGate.ts seeds the initial bronze and never promotes;
+//     identityVerification.ts does not write the tier at all. The client cannot
+//     set them; firestore.rules rejects every client write to them.
 // [x] Face matching happens server-side. The on-device Vision comparison in
 //     SafetyVerifier is a UI affordance and is never trusted for gating.
 // [x] Student ID images and liveness frames are read from the write-only Storage

@@ -3,6 +3,8 @@
 // [x] API key accessed via defineSecret(), never exposed to client
 // [x] Client sends only their UID + inquiry reference — no raw ID images transit through us
 // [x] Proxy returns minimal data: {verificationStatus, trustScoreDelta, badge} only
+// [x] Never writes trustLevel — the campus tier is promoted only by
+//     studentIdVerification.ts. This function cannot mint gold.
 // [x] Auth required — request.auth.uid must match the target UID
 // [x] Rate limited — max 3 verification attempts per hour per user
 // [x] No PII logged — only UID and status transitions
@@ -25,7 +27,6 @@ interface VerificationResult {
   verificationStatus: "verified" | "pending" | "flagged" | "unverified";
   trustScoreDelta: number;
   badge: string | null;
-  trustLevel: string;
 }
 
 /**
@@ -51,10 +52,10 @@ export const createVerificationSession = onCall(
       );
     }
 
-    // Call Persona API to create an inquiry session
-    // In production, this would be an actual HTTP call to Persona's API.
-    // For now, we return a placeholder structure.
-    // TODO: Replace with actual Persona API call when API key is provisioned
+    // Creates the inquiry server-side so the API key never reaches a client.
+    // The iOS client is not wired to open the returned inquiry — see the TODO in
+    // SafetyVerifier.verifyIdentity() — so this path is dormant in the shipping
+    // app rather than unimplemented here.
     const apiKey = PERSONA_API_KEY.value();
     const templateId = PERSONA_TEMPLATE_ID.value();
 
@@ -173,9 +174,14 @@ export const onVerificationComplete = onCall(
         ),
       };
 
-      // Upgrade trust level if verified
+      // Deliberately no trustLevel write. The campus tier is promoted in exactly
+      // one place — studentIdVerification.ts, on the student ID card photo
+      // (silver) and the ID-to-liveness face match (gold). A third-party identity
+      // check is a useful extra signal, not a campus enrolment proof, so it moves
+      // verificationStatus and trustScore and stops there. Minting gold here
+      // would hand out the Dating and NameDrop gates on evidence the campus
+      // model never asked for.
       if (result.verificationStatus === "verified") {
-        updateData.trustLevel = result.trustLevel;
         updateData.verificationCompletedAt =
           admin.firestore.FieldValue.serverTimestamp();
       }
@@ -203,7 +209,6 @@ function mapPersonaStatus(personaStatus: string): VerificationResult {
         verificationStatus: "verified",
         trustScoreDelta: 0.2,
         badge: "id_verified",
-        trustLevel: "gold",
       };
     case "needs_review":
     case "pending":
@@ -211,7 +216,6 @@ function mapPersonaStatus(personaStatus: string): VerificationResult {
         verificationStatus: "pending",
         trustScoreDelta: 0,
         badge: null,
-        trustLevel: "bronze",
       };
     case "failed":
     case "declined":
@@ -219,14 +223,12 @@ function mapPersonaStatus(personaStatus: string): VerificationResult {
         verificationStatus: "flagged",
         trustScoreDelta: -0.1,
         badge: null,
-        trustLevel: "bronze",
       };
     default:
       return {
         verificationStatus: "unverified",
         trustScoreDelta: 0,
         badge: null,
-        trustLevel: "bronze",
       };
   }
 }
