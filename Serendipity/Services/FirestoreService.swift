@@ -33,8 +33,21 @@ import FirebaseStorage
 
 final class FirestoreService {
     static let shared = FirestoreService()
-    private let db = Firestore.firestore()
-    private let storage = Storage.storage()
+
+    // Computed, not stored. `.shared` is constructed at app launch — and by the
+    // XCTest host, where `FirebaseApp.configure()` never runs because there is no
+    // `GoogleService-Info.plist`. A stored handle resolves `+[FIRFirestore
+    // firestore]` at construction and aborts the process there. Computed, the
+    // handle is resolved at the first real call instead, so building the
+    // singleton costs nothing and the tests can load the module.
+    //
+    // Computed rather than `lazy var` because this type is deliberately not
+    // `@MainActor` and is called from concurrent async contexts: a `lazy var`
+    // would be an unsynchronised first-access mutation, and a data race under the
+    // Swift 6 language mode. Firebase caches both default instances, so
+    // re-resolving per access is a dictionary lookup, not a new client.
+    private var db: Firestore { Firestore.firestore() }
+    private var storage: Storage { Storage.storage() }
 
     private init() {}
 

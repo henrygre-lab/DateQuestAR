@@ -54,7 +54,10 @@ final class SchoolGateManager: ObservableObject {
     @Published private(set) var schoolId: String?
     @Published private(set) var schoolDisplayName: String?
 
-    private let functions = Functions.functions()
+    // Computed, not stored: resolving a Firebase handle at construction
+    // aborts the XCTest host, which launches without a configured app. See
+    // FirestoreService for the full rationale.
+    private var functions: Functions { Functions.functions() }
     private var phoneVerificationID: String?
 
     private init() {}

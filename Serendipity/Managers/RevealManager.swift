@@ -65,8 +65,11 @@ final class RevealManager: ObservableObject {
 
     // MARK: - Dependencies
 
-    private let db = Firestore.firestore()
-    private let functions = Functions.functions()
+    // Computed, not stored: resolving a Firebase handle at construction
+    // aborts the XCTest host, which launches without a configured app. See
+    // FirestoreService for the full rationale.
+    private var db: Firestore { Firestore.firestore() }
+    private var functions: Functions { Functions.functions() }
     private let analytics = AnalyticsService.shared
     private var slotListener: ListenerRegistration?
 

@@ -59,7 +59,7 @@ final class SafetyVerifier: ObservableObject {
     /// Threshold for the on-device hint only. The authoritative threshold lives
     /// in studentIdVerification.ts and is deliberately higher.
     private let faceMatchHintThreshold: Double = 0.70
-    private lazy var functions = Functions.functions()
+    private var functions: Functions { Functions.functions() }
     private let analytics = AnalyticsService.shared
 
     enum VerificationState: Equatable {

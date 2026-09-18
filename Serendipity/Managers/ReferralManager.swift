@@ -28,7 +28,10 @@ final class ReferralManager: ObservableObject {
     @Published var referralCount: Int = 0
     @Published var pendingRewards: Int = 0
 
-    private let db = Firestore.firestore()
+    // Computed, not stored: resolving a Firebase handle at construction
+    // aborts the XCTest host, which launches without a configured app. See
+    // FirestoreService for the full rationale.
+    private var db: Firestore { Firestore.firestore() }
     private let analytics = AnalyticsService.shared
 
     // No `baseReferralXP` here any more: the amount lives in gamification.ts,
