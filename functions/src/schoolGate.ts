@@ -350,20 +350,30 @@ export const completeSchoolGate = onCall(
           .digest("hex")
       : null;
 
+    // The bronze seed exists for a profile that has no tier yet. This function
+    // can legitimately run more than once — a re-verified school email, an OAuth
+    // account linked after the magic link — and an unconditional
+    // `trustLevel: "bronze"` inside a merge write demotes on every re-run,
+    // silently revoking Dating and NameDrop from a student who had earned them.
+    // Seed only when there is nothing above bronze to preserve. Anything
+    // unrecognised is left alone rather than reset: not seeding costs a new user
+    // nothing, and overwriting costs a promoted one their gates.
+    const userRef = db.collection("users").doc(uid);
+    const existingTier = (await userRef.get()).data()?.trustLevel;
+    const seedsBronze = existingTier === undefined || existingTier === "bronze";
+
+    const profile: Record<string, unknown> = {
+      schoolId: resolved.schoolId,
+      schoolDisplayName: resolved.school.displayName,
+      enrollmentStatus: "enrolled",
+      accountStatus: "active",
+    };
+    if (seedsBronze) profile.trustLevel = "bronze";
+
     const batch = db.batch();
 
     // Profile: community identity only. No email, no phone, no hash.
-    batch.set(
-      db.collection("users").doc(uid),
-      {
-        schoolId: resolved.schoolId,
-        schoolDisplayName: resolved.school.displayName,
-        enrollmentStatus: "enrolled",
-        trustLevel: "bronze",
-        accountStatus: "active",
-      },
-      { merge: true }
-    );
+    batch.set(userRef, profile, { merge: true });
 
     // Verification record: the sensitive half, owner-read only.
     batch.set(
